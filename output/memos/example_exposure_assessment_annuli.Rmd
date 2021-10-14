@@ -1,0 +1,439 @@
+---
+title: "Ch. 2"
+subtitle: "Working example for exposure assessment using 1-km annuli"
+output: html_notebook
+date: January 20, 2020
+---
+
+This working example demonstrates how to assess exposure using 1-km annuli. I drew a subset of well data from the DrillingInfo dataset for well sites in Signal Hill, California, around two mock residence locations.
+
+
+```{r setup, include=FALSE}
+# loads necessary packages
+  library(ggspatial)
+  library(lubridate)
+  library(sf)
+  library(tidyverse)
+
+# loads necessary functions
+  source("../../code/3-exposure_assessment/01-split_data_by_county.R")
+
+# defines global variables
+  # makes a "not in" operator, the inverse of %in%
+    '%!in%' <- function(x,y)!('%in%'(x,y))
+  # coordinate reference system (CRS) for the project
+    # unprojected CRS, NAD83, for geographic data
+    crs_nad83 <- st_crs("+init=epsg:4269 +proj=longlat +ellps=GRS80
+                         +datum=NAD83 +no_defs +towgs84=0,0,0")  
+    # projected CRS, for creating buffers
+    crs_projected <- st_crs("+proj=utm +zone=11 +datum=WGS84") 
+```
+
+### Data
+
+```{r data_import, include=FALSE, message=FALSE}
+# makes mock births data with lat/long; these two points are for homes located
+# in Signall Hill, California; I 'satellite-truthed' the locations in 
+# Google Maps; the two points are: 33.797, -118.165; and 33.802, -118.181
+  births <- tibble(id   = c(1, 2),                # id
+                   lat  = c(33.797, 33.802),      # latitude
+                   long = c(-118.165, -118.181),  # longitude)
+                   gestation_interval =           # gestation interval
+                     as.interval(as.Date("April-30-2005",
+                                         format = "%b-%d-%Y") -
+                                   as.Date("Jul-01-2004", 
+                                           format = "%b-%d-%Y"),
+                                 as.Date("Jul-01-2004", 
+                                         format = "%b-%d-%Y")))
+
+# imports raw wells data
+  di_wells_raw <- 
+    read_csv("../../data/raw/drillinginfo/california_wells_jan2019.csv")
+  
+# imports raw counties data and prepares for analysis
+  cal_counties <- 
+    st_read("../../data/raw/us_census/admin_shp/cal_counties.shp") %>%
+    st_transform(crs_nad83)
+```
+
+```{r data_tidying, include=FALSE, message=FALSE}
+# converts births to a 'sf' object
+  births_sf <- births %>%
+    st_as_sf(crs = crs_nad83, coords = c("long", "lat"))
+
+# makes 30 km mask around births for selecting sample wells
+  births_sf_mask <- births_sf %>%
+    # transforms into projected CRS for buffering
+    st_transform(crs_projected) %>%
+    # makes 20,000 m (20 km) buffer
+    st_buffer(dist = 20000) %>%
+    # merges polygons into one
+    st_union() %>%
+    # transforms back to primary project CRS
+    st_transform(crs_nad83)
+
+# preps wells data
+  # loads functions
+  source("../../code/2-tidying/02-tidy_drilling_data.R")
+  # makes dataset with wells
+  wells_sf <- prepDrillingData(di_wells_raw) %>%
+    filter(county == "Los Angeles") %>%
+    st_as_sf(crs = crs_nad83, coords = c("longitude", "latitude")) %>%
+    st_intersection(births_sf_mask)
+  
+# subsets wells data into two mutually exclusive datasets: well sites in 
+# (a) preproduction and (b) production stages
+  # well sites in production
+  wells_sf_preprod <- wells_sf %>%
+    filter(drilled_1997_to_2011 == 1)
+  # well sites in preproduction
+  wells_sf_prod <- wells_sf %>%
+    filter(drilled_1997_to_2011 == 0 & prod_1997_to_2011 == 1)
+```
+
+
+#### Map. Visualization of well sites in Signal Hill, California, and mock residence locations
+
+I selected well sites in 20 km buffer around mock residence locations (triangles). Well sites preproduction during the study period are orange, and sites in production are gray. The mock residences are the locations of actual residences randomly selected based on a visual inspection of Google Maps and are not associated with any protected datasets.
+
+```{r map1, echo=FALSE}
+ggplot() +
+  # layer - well sites in production stage during study period
+  geom_sf(data = wells_sf_prod,  color = "#808080", aes(alpha = 0.7)) +
+  # layer - well sites in preproduction stage during study period
+  geom_sf(data = wells_sf_preprod, color = "#fc8d59", aes(alpha = 0.7)) +
+  # layer - mock residence locations
+  geom_sf(data = births_sf, shape = 17, aes(size = 2)) +
+  # adds scale bar to bottom left ('bl')
+  annotation_scale(location = "bl", width_hint = 0.4) +
+  # layer - 10 km radii
+  theme_bw() +
+  theme(legend.position = "NONE")
+```
+
+### Exposure Assessment
+
+#### Map. Visualization of the 1-km annuli around mock residence location, out to 10 km from the residence
+
+This simulates what exposure data may look like for women included in the dataset. This map shows all well sites that were in preproduction or production from 1997 to 2011. Many of these wells may not have overlapped temporally with the gestational period for the birth. The residence location and duration of pregnancy are both mock data and not drawn from a protected dataset. The wells data are real and drawn from DrillingInfo for well sites in Signal Hill, California.
+
+```{r map2_prep, echo=FALSE, message=FALSE, warning=FALSE}
+# sets up data
+  # layer - mock residence location
+  lyr_residence <- births_sf %>% filter(id == 1)
+    
+  # intiates annuli as buffers
+  lyr_annulus0to1 <- lyr_residence %>% 
+    st_transform(crs_projected) %>%
+    st_buffer(dist = 1000) %>%
+    st_transform(crs_nad83)
+  lyr_annulus1to2 <- lyr_residence %>% 
+    st_transform(crs_projected) %>%
+    st_buffer(dist = 2000) %>%
+    st_transform(crs_nad83)
+  lyr_annulus2to3 <- lyr_residence %>% 
+    st_transform(crs_projected) %>%
+    st_buffer(dist = 3000) %>%
+    st_transform(crs_nad83)
+  lyr_annulus3to4 <- lyr_residence %>% 
+    st_transform(crs_projected) %>%
+    st_buffer(dist = 4000) %>%
+    st_transform(crs_nad83)
+  lyr_annulus4to5 <- lyr_residence %>% 
+    st_transform(crs_projected) %>%
+    st_buffer(dist = 5000) %>%
+    st_transform(crs_nad83)
+  lyr_annulus5to6 <- lyr_residence %>% 
+    st_transform(crs_projected) %>%
+    st_buffer(dist = 6000) %>%
+    st_transform(crs_nad83)
+  lyr_annulus6to7 <- lyr_residence %>% 
+    st_transform(crs_projected) %>%
+    st_buffer(dist = 7000) %>%
+    st_transform(crs_nad83)
+  lyr_annulus7to8 <- lyr_residence %>% 
+    st_transform(crs_projected) %>%
+    st_buffer(dist = 8000) %>%
+    st_transform(crs_nad83)
+  lyr_annulus8to9 <- lyr_residence %>% 
+    st_transform(crs_projected) %>%
+    st_buffer(dist = 9000) %>%
+    st_transform(crs_nad83)
+  lyr_annulus9to10 <- lyr_residence %>% 
+    st_transform(crs_projected) %>%
+    st_buffer(dist = 10000) %>%
+    st_transform(crs_nad83)
+  
+  # finalizes annuli by subtracting differences
+  lyr_annulus9to10 <- st_difference(lyr_annulus9to10, lyr_annulus8to9)
+  lyr_annulus8to9 <- st_difference(lyr_annulus8to9, lyr_annulus7to8)
+  lyr_annulus7to8 <- st_difference(lyr_annulus7to8, lyr_annulus6to7)
+  lyr_annulus6to7 <- st_difference(lyr_annulus6to7, lyr_annulus5to6)
+  lyr_annulus5to6 <- st_difference(lyr_annulus5to6, lyr_annulus4to5)
+  lyr_annulus4to5 <- st_difference(lyr_annulus4to5, lyr_annulus3to4)
+  lyr_annulus3to4 <- st_difference(lyr_annulus3to4, lyr_annulus2to3)
+  lyr_annulus2to3 <- st_difference(lyr_annulus2to3, lyr_annulus1to2)
+  lyr_annulus1to2 <- st_difference(lyr_annulus1to2, lyr_annulus0to1)
+  
+  # makes residence mask with 10 km buffer
+  residence_mask <- lyr_residence %>%
+    # transforms into projected CRS for buffering
+    st_transform(crs_projected) %>%
+    # makes 20,000 m (20 km) buffer
+    st_buffer(dist = 10000) %>%
+    # merges polygons into one
+    st_union() %>%
+    # transforms back to primary project CRS
+    st_transform(crs_nad83)
+  
+  # subsets wells to those within 10 km of the residence, i.e., w/in the mask
+  lyr_wells_preprod <- wells_sf_preprod %>% st_intersection(residence_mask)
+  lyr_wells_prod <- wells_sf_prod %>% st_intersection(residence_mask)
+```
+
+```{r map2_plot, echo=FALSE}
+# makes map
+  ggplot() +
+    #geom_sf(data = lyr_wells_prod, color = "#FFFFFF") +
+    geom_sf(data = lyr_annulus0to1, color = "#FFFFFF", fill = "#FFFFFF") +
+    geom_sf(data = lyr_annulus1to2, color = "#E0E0E0", fill = "#E0E0E0") +
+    geom_sf(data = lyr_annulus2to3, color = "#FFFFFF", fill = "#FFFFFF") +
+    geom_sf(data = lyr_annulus3to4, color = "#E0E0E0", fill = "#E0E0E0") +
+    geom_sf(data = lyr_annulus4to5, color = "#FFFFFF", fill = "#FFFFFF") +
+    geom_sf(data = lyr_annulus5to6, color = "#E0E0E0", fill = "#E0E0E0") +
+    geom_sf(data = lyr_annulus6to7, color = "#FFFFFF", fill = "#FFFFFF") +
+    geom_sf(data = lyr_annulus7to8, color = "#E0E0E0", fill = "#E0E0E0") +
+    geom_sf(data = lyr_annulus8to9, color = "#FFFFFF", fill = "#FFFFFF") +
+    geom_sf(data = lyr_annulus9to10, color = "#E0E0E0", fill = "#E0E0E0") +
+    geom_sf(data = lyr_wells_prod, shape = 4, color = "#808080") +
+    geom_sf(data = lyr_wells_preprod, shape = 4, color = "#fc8d59") +
+    geom_sf(data = lyr_residence, shape = 17, size = 2) +
+    annotation_scale(location = "bl", width_hint = 0.1) +
+    theme_bw()
+```
+
+#### Map. Visualization of 1-km annuli around mock residence location with well sites in preproduction or production during time of gestation
+
+Note: The residence location and duration of pregnancy are both mock data and not drawn from a protected dataset. The wells data are real and drawn from DrillingInfo for well sites in Signal Hill, California.
+
+```{r map3_prep, echo=FALSE}
+# defines mock gestation interval for mock birth
+  gestation_interval <- as.interval(as.Date("April-30-2005", 
+                                            format = "%b-%d-%Y") -
+                                      as.Date("Jul-01-2004", 
+                                            format = "%b-%d-%Y"),
+                                    as.Date("Jul-01-2004", 
+                                            format = "%b-%d-%Y"))
+
+lyr_wells_preprod2 <- lyr_wells_preprod %>%
+  mutate(drilling_interval = as.interval(date_completed - date_spudded, 
+                                         date_spudded)) %>%
+  mutate(exposed = int_overlaps(gestation_interval, drilling_interval)) %>%
+  filter(exposed == 1)
+
+lyr_wells_prod2 <- lyr_wells_prod %>%
+  mutate(prod_interval = as.interval(prod_end - prod_start, 
+                                         prod_start)) %>%
+  mutate(exposed = int_overlaps(gestation_interval, 
+                                as.interval(prod_interval))) %>%
+  filter(exposed == 1)
+```
+
+```{r map3_plot, echo=FALSE}
+# makes map
+  ggplot() +
+    geom_sf(data = lyr_annulus0to1, color = "#FFFFFF", fill = "#FFFFFF") +
+    geom_sf(data = lyr_annulus1to2, color = "#E0E0E0", fill = "#E0E0E0") +
+    geom_sf(data = lyr_annulus2to3, color = "#FFFFFF", fill = "#FFFFFF") +
+    geom_sf(data = lyr_annulus3to4, color = "#E0E0E0", fill = "#E0E0E0") +
+    geom_sf(data = lyr_annulus4to5, color = "#FFFFFF", fill = "#FFFFFF") +
+    geom_sf(data = lyr_annulus5to6, color = "#E0E0E0", fill = "#E0E0E0") +
+    geom_sf(data = lyr_annulus6to7, color = "#FFFFFF", fill = "#FFFFFF") +
+    geom_sf(data = lyr_annulus7to8, color = "#E0E0E0", fill = "#E0E0E0") +
+    geom_sf(data = lyr_annulus8to9, color = "#FFFFFF", fill = "#FFFFFF") +
+    geom_sf(data = lyr_annulus9to10, color = "#E0E0E0", fill = "#E0E0E0") +
+    geom_sf(data = lyr_wells_prod2, shape = 4, color = "#808080") +
+    geom_sf(data = lyr_wells_preprod2, shape = 4, color = "#fc8d59") +
+    geom_sf(data = lyr_residence, shape = 17, size = 2) +
+    annotation_scale(location = "bl", width_hint = 0.1) +
+    theme_bw()
+```
+
+#### Function
+
+For each input residence location, this function counts the number of wells in 1-km radius annuli (i.e., bins) out to 10 km. To consider: make this function generalizable by adding an input for radius_interval and radius_max, and generate the annuli in a looping function.
+
+```{r assessment_function, message=FALSE}
+# takes residence coordinates ('point') as an sf object, generates 1-km annuli
+# around the point out to 10 km, and counts the number of well sites, both
+# in the preproduction and production stages, within each annulus
+assessExposureAnnuliGeneral <- function(point,  # sf object
+                                        county_wells) {
+
+  # makes annuli around the point
+  
+    # initializes annuli as buffers
+    annulus0to1 <- point %>% 
+      st_transform(crs_projected) %>%
+      st_buffer(dist = 1000) %>%
+      st_transform(crs_nad83)
+    annulus1to2 <- point %>% 
+      st_transform(crs_projected) %>%
+      st_buffer(dist = 2000) %>%
+      st_transform(crs_nad83)
+    annulus2to3 <- point %>% 
+      st_transform(crs_projected) %>%
+      st_buffer(dist = 3000) %>%
+      st_transform(crs_nad83)
+    annulus3to4 <- point %>% 
+      st_transform(crs_projected) %>%
+      st_buffer(dist = 4000) %>%
+      st_transform(crs_nad83)
+    annulus4to5 <- point %>% 
+      st_transform(crs_projected) %>%
+      st_buffer(dist = 5000) %>%
+      st_transform(crs_nad83)
+    annulus5to6 <- point %>% 
+      st_transform(crs_projected) %>%
+      st_buffer(dist = 6000) %>%
+      st_transform(crs_nad83)
+    annulus6to7 <- point %>% 
+      st_transform(crs_projected) %>%
+      st_buffer(dist = 7000) %>%
+      st_transform(crs_nad83)
+    annulus7to8 <- point %>% 
+      st_transform(crs_projected) %>%
+      st_buffer(dist = 8000) %>%
+      st_transform(crs_nad83)
+    annulus8to9 <- point %>% 
+      st_transform(crs_projected) %>%
+      st_buffer(dist = 9000) %>%
+      st_transform(crs_nad83)
+    annulus9to10 <- point %>% 
+      st_transform(crs_projected) %>%
+      st_buffer(dist = 10000) %>%
+      st_transform(crs_nad83)
+  
+    # finalizes annuli by successively clipping differences in reverse order
+    annulus9to10 <- st_difference(annulus9to10, annulus8to9)
+    annulus8to9 <- st_difference(annulus8to9, annulus7to8)
+    annulus7to8 <- st_difference(annulus7to8, annulus6to7)
+    annulus6to7 <- st_difference(annulus6to7, annulus5to6)
+    annulus5to6 <- st_difference(annulus5to6, annulus4to5)
+    annulus4to5 <- st_difference(annulus4to5, annulus3to4)
+    annulus3to4 <- st_difference(annulus3to4, annulus2to3)
+    annulus2to3 <- st_difference(annulus2to3, annulus1to2)
+    annulus1to2 <- st_difference(annulus1to2, annulus0to1)
+  
+  # prepares wells data
+    
+    # makes mask to clip wells
+    point_mask <- point %>%
+      # transforms into projected CRS for buffering
+      st_transform(crs_projected) %>%
+      # makes 10,000 m (10 km) buffer
+      st_buffer(dist = 10000) %>%
+      # merges polygons into one
+      st_union() %>%
+      # transforms back to primary project CRS
+      st_transform(crs_nad83)
+    
+  # subsets to wells that intersect with 'point_mask'  i.e., within 10 km of 
+  # the maternal residence, and that have preproduction/production period 
+  # that overlaps with the gestation interval
+  
+    # well sites in preproduction stage
+    wells_preprod_within_10km <- county_wells %>%
+      filter(drilled_1997_to_2011 == 1) %>%
+      st_intersection(point_mask) %>%
+      mutate(exposed = int_overlaps(point$gestation_interval, 
+                                    drilling_interval)) %>%
+      filter(exposed == 1)
+    
+  # well sites in production stage
+    wells_prod_within_10km <- county_wells %>%
+      filter(prod_1997_to_2011 == 1) %>%
+      st_intersection(point_mask) %>%
+      mutate(exposed = int_overlaps(point$gestation_interval, 
+                                    prod_interval)) %>%
+      filter(exposed == 1)
+    
+  # counts and stores number of well sites, in the preproduction and production
+  # stages, within each annulus
+  point <- point %>% 
+    
+    # counts well sites in preproduction stage in each annulus
+    mutate(wells_preprod_0to1km = 
+             sum(unlist(st_intersects(wells_preprod_within_10km, annulus0to1))),
+           wells_preprod_1to2km = 
+             sum(unlist(st_intersects(wells_preprod_within_10km, annulus1to2))),
+           wells_preprod_2to3km = 
+             sum(unlist(st_intersects(wells_preprod_within_10km, annulus2to3))),
+           wells_preprod_3to4km = 
+             sum(unlist(st_intersects(wells_preprod_within_10km, annulus3to4))),
+           wells_preprod_4to5km = 
+             sum(unlist(st_intersects(wells_preprod_within_10km, annulus4to5))),
+           wells_preprod_5to6km = 
+             sum(unlist(st_intersects(wells_preprod_within_10km, annulus5to6))),
+           wells_preprod_6to7km = 
+             sum(unlist(st_intersects(wells_preprod_within_10km, annulus6to7))),
+           wells_preprod_7to8km = 
+             sum(unlist(st_intersects(wells_preprod_within_10km, annulus7to8))),
+           wells_preprod_8to9km = 
+             sum(unlist(st_intersects(wells_preprod_within_10km, annulus8to9))),
+           wells_preprod_9to10km = 
+             sum(unlist(st_intersects(wells_preprod_within_10km, annulus9to10)))) %>%
+    
+    # well sites in production stage in each annulus
+    mutate(wells_prod_0to1km = 
+             sum(unlist(st_intersects(wells_prod_within_10km, annulus0to1))),
+           wells_prod_1to2km= 
+             sum(unlist(st_intersects(wells_prod_within_10km, annulus1to2))),
+           wells_prod_2to3km = 
+             sum(unlist(st_intersects(wells_prod_within_10km, annulus2to3))),
+           wells_prod_3to4km = 
+             sum(unlist(st_intersects(wells_prod_within_10km, annulus3to4))),
+           wells_prod_4to5km = 
+             sum(unlist(st_intersects(wells_prod_within_10km, annulus4to5))),
+           wells_prod_5to6km = 
+             sum(unlist(st_intersects(wells_prod_within_10km, annulus5to6))),
+           wells_prod_6to7km = 
+             sum(unlist(st_intersects(wells_prod_within_10km, annulus6to7))),
+           wells_prod_7to8km = 
+             sum(unlist(st_intersects(wells_prod_within_10km, annulus7to8))),
+           wells_prod_8to9km = 
+             sum(unlist(st_intersects(wells_prod_within_10km, annulus8to9))),
+           wells_prod_9to10km = 
+             sum(unlist(st_intersects(wells_prod_within_10km, annulus9to10))))
+  
+  # returns the well count data
+  return(point)
+}
+```
+
+```{r echo=FALSE, eval=FALSE}
+# data for testing the function, delete later
+  point <- births_sf %>% filter(id == 1)
+  
+  county_wells <- prepDrillingData(di_wells_raw) %>%
+    filter(county == "Los Angeles") %>%
+    st_as_sf(crs = crs_nad83, coords = c("longitude", "latitude")) %>%
+    # add below steps to data prep/cleaning function
+    mutate(drilling_interval = as.interval(date_completed - date_spudded, 
+                                           date_spudded)) %>%
+    mutate(prod_interval = as.interval(prod_end - prod_start, 
+                                           prod_start))
+
+
+```
+
+**Testing exposure assessment function call.** Calls the assessExposureAnnuli() function for one of the sample maternal residence points and shows output. This is the same point as illustrated in the figure above.
+
+```{r warning=FALSE, message=FALSE}
+# calls function
+  point_out <- assessExposureAnnuliGeneral(point, county_wells)
+# shows output
+  glimpse(point_out)
+```
+
+The function produced the expected output. The next step is to move the code to the server and write a function to call the general function above in a loop, capture the output in a list, convert the list object to a tibble, and export the resulting dataset as a CSV file. The exported CSV shoulud have birth_id and the well count vectors for each annulus.

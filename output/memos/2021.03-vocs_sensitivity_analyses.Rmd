@@ -1,0 +1,239 @@
+---
+title: "Memo - VOCs 60° sensitivity analysis"
+output: html_notebook
+---
+
+
+```{r setup, include=FALSE}
+source("../../code/0-setup/1-setup.R")
+library("lfe")
+```
+
+```{r input_data, include=FALSE}
+aqs_daily_annuli_exposure <- 
+  readRDS("../../data/processed/aqs_daily_annuli_exposure.rds")
+vocs_exp_1999_2005 <- 
+  readRDS("../../data/processed/aqs_daily_annuli_production_upwind_60deg_1999.rds") %>%
+  bind_rows(readRDS("../../data/processed/aqs_daily_annuli_production_upwind_60deg_2000.rds")) %>%
+  bind_rows(readRDS("../../data/processed/aqs_daily_annuli_production_upwind_60deg_2001.rds")) %>%
+  bind_rows(readRDS("../../data/processed/aqs_daily_annuli_production_upwind_60deg_2002.rds")) %>%
+  bind_rows(readRDS("../../data/processed/aqs_daily_annuli_production_upwind_60deg_2003.rds")) %>%
+  bind_rows(readRDS("../../data/processed/aqs_daily_annuli_production_upwind_60deg_2004.rds")) %>%
+  bind_rows(readRDS("../../data/processed/aqs_daily_annuli_production_upwind_60deg_2005.rds"))
+  
+```
+
+```{r setup_data, include=FALSE}
+data_in1 <- aqs_daily_annuli_exposure %>%
+  filter(vocs_total >= 0) %>%
+  filter(year %in% c(2006:2019))
+data_in2 <- aqs_daily_annuli_exposure %>%
+  filter(vocs_total >= 0) %>%
+  select(-c(prod_volume_upwind_60deg_0to1km:prod_volume_upwind_60deg_9to10km)) %>%
+  select(-c(prod_volume_lateral_60deg_0to1km:prod_volume_lateral_60deg_9to10km)) %>%
+  filter(year %in% c(1999:2005)) %>%
+  left_join(vocs_exp_1999_2005) %>%
+  mutate(prod_volume_upwind_60deg_0to1km =
+           replace_na(prod_volume_upwind_60deg_0to1km, 0),
+         prod_volume_upwind_60deg_1to2km =
+           replace_na(prod_volume_upwind_60deg_1to2km, 0),
+         prod_volume_upwind_60deg_2to3km =
+           replace_na(prod_volume_upwind_60deg_2to3km, 0),
+         prod_volume_upwind_60deg_3to4km =
+           replace_na(prod_volume_upwind_60deg_3to4km, 0),
+         prod_volume_upwind_60deg_4to5km =
+           replace_na(prod_volume_upwind_60deg_4to5km, 0),
+         prod_volume_upwind_60deg_5to6km =
+           replace_na(prod_volume_upwind_60deg_5to6km, 0),
+         prod_volume_upwind_60deg_6to7km =
+           replace_na(prod_volume_upwind_60deg_6to7km, 0),
+         prod_volume_upwind_60deg_7to8km =
+           replace_na(prod_volume_upwind_60deg_7to8km, 0),
+         prod_volume_upwind_60deg_8to9km =
+           replace_na(prod_volume_upwind_60deg_8to9km, 0),
+         prod_volume_upwind_60deg_9to10km =
+           replace_na(prod_volume_upwind_60deg_9to10km, 0)) %>%
+  mutate(prod_volume_upwind_60deg_0to1km =  (prod_volume_upwind_60deg_0to1km / 
+                                               (month_length_days * 100)),
+         prod_volume_upwind_60deg_1to2km =  (prod_volume_upwind_60deg_1to2km / 
+                                               (month_length_days * 100)),
+         prod_volume_upwind_60deg_2to3km =  (prod_volume_upwind_60deg_2to3km / 
+                                               (month_length_days * 100)),
+         prod_volume_upwind_60deg_3to4km =  (prod_volume_upwind_60deg_3to4km / 
+                                               (month_length_days * 100)),
+         prod_volume_upwind_60deg_4to5km =  (prod_volume_upwind_60deg_4to5km / 
+                                               (month_length_days * 100)),
+         prod_volume_upwind_60deg_5to6km =  (prod_volume_upwind_60deg_5to6km / 
+                                               (month_length_days * 100)),
+         prod_volume_upwind_60deg_6to7km =  (prod_volume_upwind_60deg_6to7km / 
+                                               (month_length_days * 100)),
+         prod_volume_upwind_60deg_7to8km =  (prod_volume_upwind_60deg_7to8km / 
+                                               (month_length_days * 100)),
+         prod_volume_upwind_60deg_8to9km =  (prod_volume_upwind_60deg_8to9km / 
+                                               (month_length_days * 100)),
+         prod_volume_upwind_60deg_9to10km =  (prod_volume_upwind_60deg_9to10km / 
+                                                (month_length_days * 100))) %>%
+  mutate(prod_volume_nowind_0to1km =  (prod_volume_nowind_0to1km / 
+                                               (month_length_days * 100)),
+         prod_volume_nowind_1to2km =  (prod_volume_nowind_1to2km / 
+                                               (month_length_days * 100)),
+         prod_volume_nowind_2to3km =  (prod_volume_nowind_2to3km / 
+                                               (month_length_days * 100)),
+         prod_volume_nowind_3to4km =  (prod_volume_nowind_3to4km / 
+                                               (month_length_days * 100)),
+         prod_volume_nowind_4to5km =  (prod_volume_nowind_4to5km / 
+                                               (month_length_days * 100)),
+         prod_volume_nowind_5to6km =  (prod_volume_nowind_5to6km / 
+                                               (month_length_days * 100)),
+         prod_volume_nowind_6to7km =  (prod_volume_nowind_6to7km / 
+                                               (month_length_days * 100)),
+         prod_volume_nowind_7to8km =  (prod_volume_nowind_7to8km / 
+                                               (month_length_days * 100)),
+         prod_volume_nowind_8to9km =  (prod_volume_nowind_8to9km / 
+                                               (month_length_days * 100)),
+         prod_volume_nowind_9to10km =  (prod_volume_nowind_9to10km / 
+                                                (month_length_days * 100))) %>%
+  mutate(prod_volume_downwind_0to1km =  (prod_volume_downwind_0to1km / 
+                                               (month_length_days * 100)),
+         prod_volume_downwind_1to2km =  (prod_volume_downwind_1to2km / 
+                                               (month_length_days * 100)),
+         prod_volume_downwind_2to3km =  (prod_volume_downwind_2to3km / 
+                                               (month_length_days * 100)),
+         prod_volume_downwind_3to4km =  (prod_volume_downwind_3to4km / 
+                                               (month_length_days * 100)),
+         prod_volume_downwind_4to5km =  (prod_volume_downwind_4to5km / 
+                                               (month_length_days * 100)),
+         prod_volume_downwind_5to6km =  (prod_volume_downwind_5to6km / 
+                                               (month_length_days * 100)),
+         prod_volume_downwind_6to7km =  (prod_volume_downwind_6to7km / 
+                                               (month_length_days * 100)),
+         prod_volume_downwind_7to8km =  (prod_volume_downwind_7to8km / 
+                                               (month_length_days * 100)),
+         prod_volume_downwind_8to9km =  (prod_volume_downwind_8to9km / 
+                                               (month_length_days * 100)),
+         prod_volume_downwind_9to10km =  (prod_volume_downwind_9to10km / 
+                                                (month_length_days * 100))) %>%
+  mutate(prod_volume_lateral_60deg_0to1km = 
+           (prod_volume_nowind_0to1km -
+              (prod_volume_upwind_60deg_0to1km + prod_volume_downwind_0to1km)),
+         prod_volume_lateral_60deg_1to2km = 
+           (prod_volume_nowind_1to2km -
+              (prod_volume_upwind_60deg_1to2km + prod_volume_downwind_1to2km)),
+         prod_volume_lateral_60deg_2to3km = 
+           (prod_volume_nowind_2to3km -
+              (prod_volume_upwind_60deg_2to3km + prod_volume_downwind_2to3km)),
+         prod_volume_lateral_60deg_3to4km = 
+           (prod_volume_nowind_3to4km -
+              (prod_volume_upwind_60deg_3to4km + prod_volume_downwind_3to4km)),
+         prod_volume_lateral_60deg_4to5km = 
+           (prod_volume_nowind_4to5km -
+              (prod_volume_upwind_60deg_4to5km + prod_volume_downwind_4to5km)),
+         prod_volume_lateral_60deg_5to6km = 
+           (prod_volume_nowind_5to6km -
+              (prod_volume_upwind_60deg_5to6km + prod_volume_downwind_5to6km)),
+         prod_volume_lateral_60deg_6to7km = 
+           (prod_volume_nowind_6to7km -
+              (prod_volume_upwind_60deg_6to7km + prod_volume_downwind_6to7km)),
+         prod_volume_lateral_60deg_7to8km = 
+           (prod_volume_nowind_7to8km -
+              (prod_volume_upwind_60deg_7to8km + prod_volume_downwind_7to8km)),
+         prod_volume_lateral_60deg_8to9km = 
+           (prod_volume_nowind_8to9km -
+              (prod_volume_upwind_60deg_8to9km + prod_volume_downwind_8to9km)),
+         prod_volume_lateral_60deg_9to10km = 
+           (prod_volume_nowind_9to10km -
+              (prod_volume_upwind_60deg_9to10km + prod_volume_downwind_9to10km)))
+data_in <- bind_rows(data_in1, data_in2)
+```
+
+## Objective
+
+The VOCs analysis is the only one that includes data prior to 2006, because I wanted to adjust for smoke exposure in the other models. In this memo, I add the exposure assessment for monitor-days with VOC observations 1999-2005 to the 2006-2019 data.
+
+
+#### Adjusted FE regression model
+
+**Sensitivity analysis**
+
+```{r echo=FALSE}
+model_fit <- felm(vocs_total ~ 
+                    prod_volume_upwind_60deg_0to1km +
+                    prod_volume_upwind_60deg_1to2km +
+                    prod_volume_upwind_60deg_2to3km +
+                    prod_volume_upwind_60deg_3to4km +
+                    prod_volume_upwind_60deg_4to5km +
+                    prod_volume_upwind_60deg_5to6km +
+                    prod_volume_upwind_60deg_6to7km +
+                    prod_volume_upwind_60deg_7to8km +
+                    prod_volume_upwind_60deg_8to9km +
+                    prod_volume_upwind_60deg_9to10km +
+                    prod_volume_downwind_0to1km +
+                    prod_volume_downwind_1to2km +
+                    prod_volume_downwind_2to3km +
+                    prod_volume_downwind_3to4km +
+                    prod_volume_downwind_4to5km +
+                    prod_volume_downwind_5to6km +
+                    prod_volume_downwind_6to7km +
+                    prod_volume_downwind_7to8km +
+                    prod_volume_downwind_8to9km +
+                    prod_volume_downwind_9to10km +
+                    prod_volume_lateral_60deg_0to1km +
+                    prod_volume_lateral_60deg_1to2km +
+                    prod_volume_lateral_60deg_2to3km +
+                    prod_volume_lateral_60deg_3to4km +
+                    prod_volume_lateral_60deg_4to5km +
+                    prod_volume_lateral_60deg_5to6km +
+                    prod_volume_lateral_60deg_6to7km +
+                    prod_volume_lateral_60deg_7to8km +
+                    prod_volume_lateral_60deg_8to9km +
+                    prod_volume_lateral_60deg_9to10km +
+                    narr_precip + 
+                    narr_temp +
+                    narr_wind_speed
+                  | day_of_week + 
+                    factor(monitor_id):factor(month) +
+                    factor(carb_basin):factor(year) +
+                    monitor_id,
+                  data = data_in)
+summary(model_fit)
+```
+
+**Table**
+
+```{r echo=FALSE}
+model_output <-
+  tibble(
+    distance  = c("0-1", "1-2", "2-3", "3-4", "4-5",
+                  "5-6", "6-7", "7-8", "8-9", "9-10",
+                  "0-1", "1-2", "2-3", "3-4", "4-5",
+                  "5-6", "6-7", "7-8", "8-9", "9-10",
+                  "0-1", "1-2", "2-3", "3-4", "4-5",
+                  "5-6", "6-7", "7-8", "8-9", "9-10"),
+    direction = c("Upwind", "Upwind", "Upwind", "Upwind", "Upwind",
+                  "Upwind", "Upwind", "Upwind", "Upwind", "Upwind",
+                  "Downwind", "Downwind", "Downwind", "Downwind", "Downwind",
+                  "Downwind", "Downwind", "Downwind", "Downwind", "Downwind",
+                  "Lateral", "Lateral", "Lateral", "Lateral","Lateral",
+                  "Lateral", "Lateral", "Lateral", "Lateral","Lateral"),
+    point_est = coef(model_fit)[1:30],
+    ci_lower  = confint(model_fit)[1:30],
+    ci_upper  = confint(model_fit)[34:63])
+write_csv(model_output, "../results/point_estimates/daily_annuli_production_vocs_60deg.csv")
+model_output
+```
+
+**Figure**
+
+```{r echo=FALSE, warning = FALSE}
+model_output %>%
+  filter(distance %!in% c("7-8", "8-9", "9-10")) %>%
+  ggplot() + 
+  geom_pointrange(aes(x = distance, y = point_est, 
+                      ymin = ci_lower, ymax = ci_upper),
+                  alpha = 0.5) + 
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  labs(x = "Distance to well (km)", 
+       y = "Marginal change in daily VOCs") +
+  theme_classic() +
+  facet_wrap(~ direction)
+```

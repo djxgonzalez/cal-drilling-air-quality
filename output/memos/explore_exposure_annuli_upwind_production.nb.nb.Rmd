@@ -1,0 +1,114 @@
+---
+title: "Data Exploration: Exposure Assessment - Annuli Upwind Production Volume"
+output: html_notebook
+---
+
+```{r setup_input_tidy, include=FALSE}
+# sets up R environment
+source("../../code/0-setup/1-setup.R")
+
+# inputs data; starting with 2010 data components
+aqs_daily_annuli_upwind_production_2010 <- 
+  readRDS("../../data/processed/aqs_daily_annuli_upwind_production_2010a.rds") %>%
+  bind_rows(readRDS("../../data/processed/aqs_daily_annuli_upwind_production_2010b.rds")) %>%
+  bind_rows(readRDS("../../data/processed/aqs_daily_annuli_upwind_production_2010c.rds")) %>%
+  bind_rows(readRDS("../../data/processed/aqs_daily_annuli_upwind_production_2010d.rds")) %>%
+  bind_rows(readRDS("../../data/processed/aqs_daily_annuli_upwind_production_2010e.rds")) %>%
+  bind_rows(readRDS("../../data/processed/aqs_daily_annuli_upwind_production_2010f.rds")) %>%
+  bind_rows(readRDS("../../data/processed/aqs_daily_annuli_upwind_production_2010g.rds")) %>%
+  bind_rows(readRDS("../../data/processed/aqs_daily_annuli_upwind_production_2010h.rds"))
+aqs_monitor_day <- readRDS("../../data/interim/aqs_monitor_day.rds")
+
+# combines datasets
+aqs_daily_annuli_upwind_production <- aqs_daily_annuli_upwind_production_2010 %>%
+  left_join(aqs_monitor_day)
+```
+
+## 2010 data
+
+In 2010, we have data from `r aqs_daily_annuli_upwind_production_2010 %>% distinct(monitor_id) %>% nrow()` monitors that are near wells (i.e., within 10 km of a well that produced >0 total oil/gas that year). Nearly all of the monitors had exposure to oil/gas that year.
+
+#### Table. Total annual production within each annulus for each monitor near producing wells
+
+```{r}
+aqs_daily_annuli_upwind_production_2010 %>% 
+  group_by(monitor_id) %>% 
+  summarize(total_prod_0to1km = sum(wells_prod_upwind_0to1km),
+            total_prod_1to2km = sum(wells_prod_upwind_1to2km),
+            total_prod_2to3km = sum(wells_prod_upwind_2to3km),
+            total_prod_3to4km = sum(wells_prod_upwind_3to4km),
+            total_prod_4to5km = sum(wells_prod_upwind_4to5km),
+            total_prod_5to6km = sum(wells_prod_upwind_5to6km),
+            total_prod_6to7km = sum(wells_prod_upwind_6to7km),
+            total_prod_7to8km = sum(wells_prod_upwind_7to8km),
+            total_prod_8to9km = sum(wells_prod_upwind_8to9km),
+            total_prod_9to10km = sum(wells_prod_upwind_9to10km))
+```
+
+#### Plot. Daily upwind production volume exposure within 1 km for each day for monitors near producing wells
+
+```{r}
+aqs_daily_annuli_upwind_production_2010 %>% 
+  group_by(date) %>% 
+  summarize(total_prod_0to1km = sum(wells_prod_upwind_0to1km),
+            total_prod_1to2km = sum(wells_prod_upwind_1to2km),
+            total_prod_2to3km = sum(wells_prod_upwind_2to3km),
+            total_prod_3to4km = sum(wells_prod_upwind_3to4km),
+            total_prod_4to5km = sum(wells_prod_upwind_4to5km),
+            total_prod_5to6km = sum(wells_prod_upwind_5to6km),
+            total_prod_6to7km = sum(wells_prod_upwind_6to7km),
+            total_prod_7to8km = sum(wells_prod_upwind_7to8km),
+            total_prod_8to9km = sum(wells_prod_upwind_8to9km),
+            total_prod_9to10km = sum(wells_prod_upwind_9to10km)) %>%
+  ggplot() +
+  geom_line(aes(date, total_prod_0to1km)) +
+  theme_classic()
+```
+
+#### Plot. Daily upwind production volume exposure within 3 km for each day for monitors near producing wells
+
+```{r}
+aqs_daily_annuli_upwind_production_2010 %>% 
+  group_by(date) %>% 
+  summarize(total_prod_0to1km = sum(wells_prod_upwind_0to1km),
+            total_prod_1to2km = sum(wells_prod_upwind_1to2km),
+            total_prod_2to3km = sum(wells_prod_upwind_2to3km),
+            total_prod_3to4km = sum(wells_prod_upwind_3to4km),
+            total_prod_4to5km = sum(wells_prod_upwind_4to5km),
+            total_prod_5to6km = sum(wells_prod_upwind_5to6km),
+            total_prod_6to7km = sum(wells_prod_upwind_6to7km),
+            total_prod_7to8km = sum(wells_prod_upwind_7to8km),
+            total_prod_8to9km = sum(wells_prod_upwind_8to9km),
+            total_prod_9to10km = sum(wells_prod_upwind_9to10km)) %>%
+  mutate(total_prod_0to3km = total_prod_0to1km + total_prod_1to2km +
+           total_prod_2to3km) %>%
+  ggplot() +
+  geom_line(aes(date, total_prod_0to3km)) +
+  theme_classic()
+```
+
+
+#### Plot. Daily upwind production volume exposure within 10 km for each day for monitors near producing wells
+
+```{r}
+aqs_daily_annuli_upwind_production_2010 %>% 
+  group_by(date) %>% 
+  summarize(total_prod_0to1km = sum(wells_prod_upwind_0to1km),
+            total_prod_1to2km = sum(wells_prod_upwind_1to2km),
+            total_prod_2to3km = sum(wells_prod_upwind_2to3km),
+            total_prod_3to4km = sum(wells_prod_upwind_3to4km),
+            total_prod_4to5km = sum(wells_prod_upwind_4to5km),
+            total_prod_5to6km = sum(wells_prod_upwind_5to6km),
+            total_prod_6to7km = sum(wells_prod_upwind_6to7km),
+            total_prod_7to8km = sum(wells_prod_upwind_7to8km),
+            total_prod_8to9km = sum(wells_prod_upwind_8to9km),
+            total_prod_9to10km = sum(wells_prod_upwind_9to10km)) %>%
+  mutate(total_prod_0to10km = total_prod_0to1km + total_prod_1to2km +
+           total_prod_2to3km + total_prod_3to4km + total_prod_4to5km +
+           total_prod_5to6km + total_prod_6to7km + total_prod_7to8km +
+           total_prod_8to9km + total_prod_9to10km) %>%
+  ggplot() +
+  geom_line(aes(date, total_prod_0to10km)) +
+  theme_classic()
+```
+

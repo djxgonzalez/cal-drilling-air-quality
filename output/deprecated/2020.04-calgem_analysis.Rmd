@@ -1,0 +1,52 @@
+---
+title: "Crude oil production in California, 2020"
+author: "David J.X. Gonzalez"
+output: html_notebook
+---
+
+### Analysis for VISION, 4.1.2020
+
+
+**Plot. WTI crude oil price, January 2019 - March 2020**
+
+West Texas Intermediate crude oil prices. Prices from the Midway-Sunset field in California aren't available for March 2020 yet.
+
+```{r echo=FALSE}
+eia_wti_crude_price %>%
+  filter(date >= as.Date("01-01-2019", format = "%m-%d-%Y")) %>% 
+  filter(wti_crude_oil_price_per_barrel_usd > 0) %>%
+  ggplot() +
+    geom_line(aes(date, wti_crude_oil_price_per_barrel_usd)) +
+    labs(x = "Date", y = "WTI Crude Oil Price per Barrel (USD)") +
+    theme_classic()
+```
+
+**Plot. Oil production by month**
+
+March data aren't available yet. Obtained from CalGEM website.
+
+```{r echo=FALSE}
+calgem_production_2020 %>%
+  filter(prod_month_year < as.Date("05-01-2020", format = "%m-%d-%Y")) %>%
+  group_by(prod_month_year) %>%
+  summarize(oil_per_month = sum(oil_produced)) %>%
+  ggplot() +
+    geom_bar(aes(prod_month_year, oil_per_month), stat = "identity") +
+    labs(x = "Date", y = "Oil Produced (Barrels)") +
+    theme_classic()
+```
+
+**Plot. Wells spudded per month**
+
+All wells data don't seem updated, no spud dates beyond December 2019 (except an eroneous date in 2026)
+
+```{r echo=FALSE}
+calgem_wells %>%
+  filter(SpudDate >= as.Date("01-01-2020", format = "%m-%d-%Y"))# %>% View()
+  group_by(month = month(SpudDate)) %>%
+  summarize(spuds_per_month = n()) %>%
+  ggplot() +
+    geom_bar(aes(month, spuds_per_month), stat = "identity") +
+    labs(x = "Date", y = "Oil Produced (Barrels)") +
+    theme_classic()
+```

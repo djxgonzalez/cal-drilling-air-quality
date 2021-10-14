@@ -1,0 +1,272 @@
+---
+title: "Working Example: Exposure Assessment Annuli Production Volume"
+output: html_notebook
+---
+
+This Rmd notebook explores our method for assessing exposure to monthly production volume using 1-km annuli (without wind). This is for AQS monitor 060290232, which is located in Bakersfield, CA.
+
+
+```{r setup, include=FALSE}
+source("../../code/0-setup/1-setup.R")
+```
+
+```{r data_input, include=FALSE}
+aqs_monitor_day   <- readRDS("../../data/interim/aqs_monitor_day.rds")
+calgem_production <- readRDS("../../data/interim/calgem_production_monthly.rds")
+wells_interim     <- readRDS("../../data/interim/wells_interim.rds")
+```
+
+```{r data_tidying, include=FALSE}
+# restricts to data from monitor 060290232 (located in Bakersfield, CA) and 
+# nearby wells and production
+
+##### fix this
+# captures the monitor interval start and end dates in their own variables
+interval_start <- monitor %>%
+  as_tibble() %>%
+  select(!!interval_start) %>%
+  as.data.frame()
+interval_start <- interval_start[1, 1]
+
+# converts to geospatial data
+aqs_monitor_day_sf <- aqs_monitor_day %>%
+  drop_na(longitude) %>%
+  dplyr::select(monitor_id, date, longitude, latitude) %>%
+  st_as_sf(coords = c("longitude", "latitude"), crs = crs_nad83)
+wells_prod_sf <- calgem_production %>%
+  drop_na(longitude) %>%
+  filter(total_oil_gas_produced > 0) %>%
+  distinct(pwt_id, .keep_all = TRUE) %>%
+  st_as_sf(coords = c("longitude", "latitude"), crs = crs_nad83)
+#wells_all_sf <- wells_interim %>%
+#  st_as_sf(coords = c("longitude", "latitude"), crs = crs_nad83)
+
+# selects monitor and wells in buffer
+monitor <- aqs_monitor_day %>%
+  filter(monitor_id == "060290232")
+monitor_point <- monitor %>% 
+  distinct(monitor_id, .keep_all = TRUE) %>%
+  dplyr::select(monitor_id, date, longitude, latitude) %>%
+  st_as_sf(coords = c("longitude", "latitude"), crs = crs_nad83)
+monitor_mask <- monitor %>% 
+  distinct(monitor_id, .keep_all = TRUE) %>%
+  dplyr::select(monitor_id, date, longitude, latitude) %>%
+  st_as_sf(coords = c("longitude", "latitude"), crs = crs_nad83) %>%
+  st_transform(crs_projected) %>%
+  st_buffer(dist = 15000) %>%
+  st_transform(crs_nad83)
+# restricts to active wells and production within buffer
+wells_within_15 <- wells_prod_sf %>%
+  st_intersection(monitor_mask)
+prod_within_15 <- calgem_production %>%
+  filter(pwt_id %in% wells_within_15$pwt_id) %>%
+  filter(prod_month_year == "2009-07-01") %>%
+  st_as_sf(coords = c("longitude", "latitude"), crs = crs_nad83) %>%
+  select(total_oil_gas_produced)
+
+#.......................................................................
+# makes annuli around the maternal residence coordinates in the 'monitor' data
+annulus0to1 <- monitor_point %>%
+  st_transform(crs_projected) %>%
+  st_buffer(dist = 1000) %>%
+  st_transform(crs_nad83)
+annulus1to2 <- monitor_point %>% 
+  st_transform(crs_projected) %>%
+  st_buffer(dist = 2000) %>%
+  st_transform(crs_nad83)
+annulus2to3 <- monitor_point %>% 
+  st_transform(crs_projected) %>%
+  st_buffer(dist = 3000) %>%
+  st_transform(crs_nad83)
+annulus3to4 <- monitor_point %>% 
+  st_transform(crs_projected) %>%
+  st_buffer(dist = 4000) %>%
+  st_transform(crs_nad83)
+annulus4to5 <- monitor_point %>% 
+  st_transform(crs_projected) %>%
+  st_buffer(dist = 5000) %>%
+  st_transform(crs_nad83)
+annulus5to6 <- monitor_point %>% 
+  st_transform(crs_projected) %>%
+  st_buffer(dist = 6000) %>%
+  st_transform(crs_nad83)
+annulus6to7 <- monitor_point %>% 
+  st_transform(crs_projected) %>%
+  st_buffer(dist = 7000) %>%
+  st_transform(crs_nad83)
+annulus7to8 <- monitor_point %>% 
+  st_transform(crs_projected) %>%
+  st_buffer(dist = 8000) %>%
+  st_transform(crs_nad83)
+annulus8to9 <- monitor_point %>% 
+  st_transform(crs_projected) %>%
+  st_buffer(dist = 9000) %>%
+  st_transform(crs_nad83)
+annulus9to10 <- monitor_point %>% 
+  st_transform(crs_projected) %>%
+  st_buffer(dist = 10000) %>%
+  st_transform(crs_nad83)
+annulus10to11 <- monitor_point %>% 
+  st_transform(crs_projected) %>%
+  st_buffer(dist = 11000) %>%
+  st_transform(crs_nad83)
+annulus11to12 <- monitor_point %>% 
+  st_transform(crs_projected) %>%
+  st_buffer(dist = 12000) %>%
+  st_transform(crs_nad83)
+annulus12to13 <- monitor_point %>% 
+  st_transform(crs_projected) %>%
+  st_buffer(dist = 13000) %>%
+  st_transform(crs_nad83)
+annulus13to14 <- monitor_point %>% 
+  st_transform(crs_projected) %>%
+  st_buffer(dist = 14000) %>%
+  st_transform(crs_nad83)
+annulus14to15 <- monitor_mask
+# finalizes annuli by successively clipping differences in reverse order
+annulus14to15 <- st_difference(annulus14to15, annulus13to14)
+annulus13to14 <- st_difference(annulus13to14, annulus12to13)
+annulus12to13 <- st_difference(annulus12to13, annulus11to12)
+annulus11to12 <- st_difference(annulus11to12, annulus10to11)
+annulus10to11 <- st_difference(annulus10to11, annulus9to10)
+annulus9to10  <- st_difference(annulus9to10,  annulus8to9)
+annulus8to9   <- st_difference(annulus8to9,   annulus7to8)
+annulus7to8   <- st_difference(annulus7to8,   annulus6to7)
+annulus6to7   <- st_difference(annulus6to7,   annulus5to6)
+annulus5to6   <- st_difference(annulus5to6,   annulus4to5)
+annulus4to5   <- st_difference(annulus4to5,   annulus3to4)
+annulus3to4   <- st_difference(annulus3to4,   annulus2to3)
+annulus2to3   <- st_difference(annulus2to3,   annulus1to2)
+annulus1to2   <- st_difference(annulus1to2,   annulus0to1)
+```
+
+#### Plot. Visualization of monitor, mask, and nearby active wells, 1999-2019
+
+```{r echo=FALSE}
+ggplot() +
+  geom_sf(data = monitor_mask) +
+  geom_sf(data = monitor_point, shape = 17) +
+  geom_sf(data = annulus0to1,   fill = NA, color = "white") +
+  geom_sf(data = annulus1to2,   fill = NA, color = "white") +
+  geom_sf(data = annulus2to3,   fill = NA, color = "white") +
+  geom_sf(data = annulus3to4,   fill = NA, color = "white") +
+  geom_sf(data = annulus4to5,   fill = NA, color = "white") +
+  geom_sf(data = annulus5to6,   fill = NA, color = "white") +
+  geom_sf(data = annulus6to7,   fill = NA, color = "white") +
+  geom_sf(data = annulus7to8,   fill = NA, color = "white") +
+  geom_sf(data = annulus8to9,   fill = NA, color = "white") +
+  geom_sf(data = annulus9to10,  fill = NA, color = "white") +
+  geom_sf(data = annulus10to11, fill = NA, color = "white") +
+  geom_sf(data = annulus11to12, fill = NA, color = "white") +
+  geom_sf(data = annulus12to13, fill = NA, color = "white") +
+  geom_sf(data = annulus13to14, fill = NA, color = "white") +
+  #geom_sf(data = annulus14to15, fill = NA, color = "white") +
+  geom_sf(data = wells, shape = 4, alpha = 0.1) +
+  geom_sf(data = annulus0to1,   fill = NA, color = "white", linetype = "dotted") +
+  geom_sf(data = annulus1to2,   fill = NA, color = "white", linetype = "dotted") +
+  geom_sf(data = annulus2to3,   fill = NA, color = "white", linetype = "dotted") +
+  geom_sf(data = annulus3to4,   fill = NA, color = "white", linetype = "dotted") +
+  geom_sf(data = annulus4to5,   fill = NA, color = "white", linetype = "dotted") +
+  geom_sf(data = annulus5to6,   fill = NA, color = "white", linetype = "dotted") +
+  geom_sf(data = annulus6to7,   fill = NA, color = "white", linetype = "dotted") +
+  geom_sf(data = annulus7to8,   fill = NA, color = "white", linetype = "dotted") +
+  geom_sf(data = annulus8to9,   fill = NA, color = "white", linetype = "dotted") +
+  geom_sf(data = annulus9to10,  fill = NA, color = "white", linetype = "dotted") +
+  geom_sf(data = annulus10to11, fill = NA, color = "white", linetype = "dotted") +
+  geom_sf(data = annulus11to12, fill = NA, color = "white", linetype = "dotted") +
+  geom_sf(data = annulus12to13, fill = NA, color = "white", linetype = "dotted") +
+  geom_sf(data = annulus13to14, fill = NA, color = "white", linetype = "dotted") +
+  #geom_sf(data = annulus14to15, fill = NA, color = "white", linetype = "dotted") +
+  theme_bw()
+```
+
+#### Plot. Visualization of monitor, mask, and nearby active wells, July 2009
+
+```{r echo=FALSE}
+ggplot() +
+  geom_sf(data = monitor_mask) +
+  geom_sf(data = monitor_point, shape = 17) +
+  geom_sf(data = annulus0to1,   fill = NA, color = "white") +
+  geom_sf(data = annulus1to2,   fill = NA, color = "white") +
+  geom_sf(data = annulus2to3,   fill = NA, color = "white") +
+  geom_sf(data = annulus3to4,   fill = NA, color = "white") +
+  geom_sf(data = annulus4to5,   fill = NA, color = "white") +
+  geom_sf(data = annulus5to6,   fill = NA, color = "white") +
+  geom_sf(data = annulus6to7,   fill = NA, color = "white") +
+  geom_sf(data = annulus7to8,   fill = NA, color = "white") +
+  geom_sf(data = annulus8to9,   fill = NA, color = "white") +
+  geom_sf(data = annulus9to10,  fill = NA, color = "white") +
+  geom_sf(data = annulus10to11, fill = NA, color = "white") +
+  geom_sf(data = annulus11to12, fill = NA, color = "white") +
+  geom_sf(data = annulus12to13, fill = NA, color = "white") +
+  geom_sf(data = annulus13to14, fill = NA, color = "white") +
+  #geom_sf(data = annulus14to15, fill = NA, color = "white") +
+  geom_sf(data = subset(prod_within_15, prod_month_year == "2009-07-01"),
+          shape = 4, alpha = 0.1) +
+  geom_sf(data = annulus0to1,   fill = NA, color = "white", linetype = "dotted") +
+  geom_sf(data = annulus1to2,   fill = NA, color = "white", linetype = "dotted") +
+  geom_sf(data = annulus2to3,   fill = NA, color = "white", linetype = "dotted") +
+  geom_sf(data = annulus3to4,   fill = NA, color = "white", linetype = "dotted") +
+  geom_sf(data = annulus4to5,   fill = NA, color = "white", linetype = "dotted") +
+  geom_sf(data = annulus5to6,   fill = NA, color = "white", linetype = "dotted") +
+  geom_sf(data = annulus6to7,   fill = NA, color = "white", linetype = "dotted") +
+  geom_sf(data = annulus7to8,   fill = NA, color = "white", linetype = "dotted") +
+  geom_sf(data = annulus8to9,   fill = NA, color = "white", linetype = "dotted") +
+  geom_sf(data = annulus9to10,  fill = NA, color = "white", linetype = "dotted") +
+  geom_sf(data = annulus10to11, fill = NA, color = "white", linetype = "dotted") +
+  geom_sf(data = annulus11to12, fill = NA, color = "white", linetype = "dotted") +
+  geom_sf(data = annulus12to13, fill = NA, color = "white", linetype = "dotted") +
+  geom_sf(data = annulus13to14, fill = NA, color = "white", linetype = "dotted") +
+  #geom_sf(data = annulus14to15, fill = NA, color = "white", linetype = "dotted") +
+  theme_bw()
+```
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+exp_variable_root <- "prod_volume_"
+
+monitor_point <- monitor_point %>%  
+  mutate(!!as.name(paste(exp_variable_root, sep = "", "0to1km")) :=   
+           sum(unlist(st_intersection(prod_within_15, annulus0to1))),
+         !!as.name(paste(exp_variable_root, sep = "", "1to2km")) := 
+           sum(unlist(st_intersection(prod_within_15, annulus1to2))),
+         !!as.name(paste(exp_variable_root, sep = "", "2to3km")) := 
+           sum(unlist(st_intersection(prod_within_15, annulus2to3))),
+         !!as.name(paste(exp_variable_root, sep = "", "3to4km")) := 
+           sum(unlist(st_intersection(prod_within_15, annulus3to4))),
+         !!as.name(paste(exp_variable_root, sep = "", "4to5km")) := 
+           sum(unlist(st_intersection(prod_within_15, annulus4to5))),
+         !!as.name(paste(exp_variable_root, sep = "", "5to6km")) := 
+           sum(unlist(st_intersection(prod_within_15, annulus5to6))),
+         !!as.name(paste(exp_variable_root, sep = "", "6to7km")) := 
+           sum(unlist(st_intersection(prod_within_15, annulus6to7))),
+         !!as.name(paste(exp_variable_root, sep = "", "7to8km")) := 
+           sum(unlist(st_intersection(prod_within_15, annulus7to8))),
+         !!as.name(paste(exp_variable_root, sep = "", "8to9km")) := 
+           sum(unlist(st_intersection(prod_within_15, annulus8to9))),
+         !!as.name(paste(exp_variable_root, sep = "", "9to10km")) := 
+           sum(unlist(st_intersection(prod_within_15, annulus9to10))),
+         !!as.name(paste(exp_variable_root, sep = "", "10to11km")) := 
+           sum(unlist(st_intersection(prod_within_15, annulus10to11))),
+         !!as.name(paste(exp_variable_root, sep = "", "11to12km")) := 
+           sum(unlist(st_intersection(prod_within_15, annulus11to12))),
+         !!as.name(paste(exp_variable_root, sep = "", "12to13km")) := 
+           sum(unlist(st_intersection(prod_within_15, annulus12to13))),
+         !!as.name(paste(exp_variable_root, sep = "", "13to14km")) := 
+           sum(unlist(st_intersection(prod_within_15, annulus13to14))),
+         !!as.name(paste(exp_variable_root, sep = "", "14to15km")) := 
+           sum(unlist(st_intersection(prod_within_15, annulus14to15)))) %>%
+  as_tibble() %>% 
+  select(-geometry)
+```
+
+#### Plot. Production volume by distance to monitor 060290232, July 2009
+
+```{r echo=FALSE}
+monitor_point %>%
+  as_tibble() %>%
+  pivot_longer(!(monitor_id:date), names_to = "bin", values_to = "volume") %>% 
+  mutate(distance = c(1:15)) %>%
+  ggplot() +
+  geom_bar(aes(distance, volume), stat = "identity") +
+  theme_bw()
+```

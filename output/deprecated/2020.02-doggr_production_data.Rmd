@@ -1,0 +1,615 @@
+---
+title: "Ch. 3: Oil Production and Air Quality in California"
+subtitle: "2020.02 - CalGEM Production Data"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+# loads necessary packages and defines global variables
+  source("../../code/0-setup/01-setup.R")
+
+# loads additional packages
+  library(ggrepel)  # for geom_label_repel()
+```
+
+```{r import, include=FALSE}
+# imports raw data
+
+  # California Air Resources Board (CARB) - administrative shapefiles
+  carb_air_basins_raw <-
+    st_read("../../data/raw/cal_epa/carb_air_basins/CaAirBasin.shp")
+  
+  # CalGEM - production, shapefiles
+  calgem_fields_raw <- 
+    st_read("../../data/raw/cal_gem/field_boundaries/DOGGR_Admin_Boundaries_Master.shp")
+  calgem_production_2018_raw <-
+    read_csv("../../data/raw/cal_gem/production/doggr_production_monthly_2018.csv")
+  calgem_production_2019_raw <-
+    read_csv("../../data/raw/cal_gem/production/doggr_production_monthly_2019.csv")
+  
+  # DrillingInfo - oil and gas well sites
+  di_wells_raw <-
+    read_csv("../../data/raw/drillinginfo/california_wells_jan2019.csv")
+  
+  # US Census Bureau - administrative shapefiles
+  cal_counties_raw <- 
+    st_read("../../data/raw/us_census/admin_shp/cal_counties.shp")
+  us_states_raw <- 
+    st_read("../../data/raw/us_census/admin_shp/tl_2018_us_state.shp")
+  
+# imports interim level
+  
+  # US EPA Air Quality System - air monitoring locations
+  aqs_sites <- read_csv("../../data/interim/aqs_sites.csv")
+```
+
+```{r tidying, include=FALSE}
+# loads functions for tidying the data
+  source("../../code/2-tidying/02-tidy_drilling_data.R")
+  source("../../code/2-tidying/03-tidy_production_data.R")
+
+# converts AQS sites to sf object
+aqs_sites <- aqs_sites %>%
+  st_as_sf(coords = c("longitude", "latitude"), crs = crs_nad83)
+
+# preps CalGEM fields data; needs to happen before prepDrillingData()
+calgem_fields <- calgem_fields_raw %>%
+  st_transform(crs_nad83) %>%
+  # renames varible names
+  mutate(field_object_id    = OBJECTID,  # not sure what this is
+         field_name         = NAME,
+         field_code         = FIELD_CODE,
+         field_area_sq_mile = AREA_SQ_MI,
+         field_area_acre    = AREA_ACRE,
+         field_perimeter    = PERIMETER,
+         field_start_date   = StartDate,
+         field_end_date     = EndDate,
+         district_name      = District) %>%
+  # keeps only the variables we need
+  select(field_object_id:district_name)
+    
+# calls functions to tidy all necessary datasets
+  calgem_production_2018 <- prepProductionData(calgem_production_2018_raw)
+  calgem_production_2019 <- prepProductionData(calgem_production_2019_raw)
+  di_wells <- prepDrillingData(di_wells_raw) 
+
+# prepares datasets necessary for this notebook
+  
+  # preps CARB air basins data
+  carb_air_basins <- carb_air_basins_raw %>%
+    st_transform(crs_nad83)
+  
+  # spatial join with oil fields data
+  di_wells_fields <- di_wells %>%     
+    st_as_sf(coords = c("longitude", "latitude"), crs = crs_nad83) %>%
+    st_join(calgem_fields) %>%
+    as_tibble()
+  
+  # US Census
+  cal_counties <- cal_counties_raw %>%
+    st_transform(crs_nad83)
+  us_states <- us_states_raw %>%
+    st_transform(crs_nad83) 
+```
+
+```{r tidying2, echo=FALSE}
+# makes combined dataset with oil wells and production by month, 2018-2019
+wells_combined <- calgem_production_2018 %>%
+  bind_rows(calgem_production_2019) %>%
+  left_join(di_wells, by = "api_number")
+```
+
+**Questions to answer**
+- Units of oil/water/gas produced?
+
+# Description
+
+- Range: January 2018 - December 2019 [Note: This range is due to how CalGEM reports the production data; a 'tidy' CSV of oil and gas production is reported for 2018-19; data prior to 2018 are available as Access Database files, which require cleaning.]
+
+# Data Exploration
+
+## Descriptive
+
+- There are **`r wells_combined %>% distinct(api_number) %>% nrow()`**  unique wells in the combined DrillingInfo/CalGEM dataset (2018-2019).
+- Distribution of oil produced across all wells and months
+```{r echo=FALSE}
+summary(wells_combined$oil_produced)
+```
+
+### Univariate 
+
+#### Figure. Wells by county
+
+```{r echo=FALSE}
+wells_combined %>%
+  group_by(county) %>%
+  summarize(wells_per_county = n()) %>%
+  
+  # makes plot in descending order
+  ggplot() +
+    geom_bar(aes(x = reorder(county, wells_per_county), 
+                 y = wells_per_county),
+             stat = "identity") +
+    labs(x = "County", y = "Count of Wells") +
+    scale_y_continuous(position = "right") +  # arranges axis labels on top
+    theme_bw() +
+    coord_flip()
+```
+
+#### Figure. Map of oil and gas well locations in preproduction or production, 1999-2019
+
+```{r echo=FALSE}
+wells_buffer_1km <- di_wells %>%
+  filter(drilled_1999_to_2019 == 1 | prod_1999_to_2019 == 1) %>%
+  st_as_sf(coords = c("longitude", "latitude"), crs = crs_nad83) %>%
+  st_transform(crs_projected) %>%
+  st_buffer(1000) %>%
+  st_union() %>%
+  st_transform(crs_nad83)
+```
+
+```{r echo=FALSE}
+ggplot() +
+  geom_sf(data = st_union(cal_counties), fill = "#FFFFFF") +
+  geom_sf(data = wells_buffer_1km,fill = "orange", color = NA) +
+  theme_bw()
+```
+
+#### Table. Monitors within 10 km of oil or gas wells
+
+Note: This is different from the fields, defined below
+
+```{r echo=FALSE}
+wells_buffer_0.1km <- di_wells %>%
+  filter(drilled_1999_to_2019 == 1 | prod_1999_to_2019 == 1) %>%
+  st_as_sf(coords = c("longitude", "latitude"), crs = crs_nad83) %>%
+  st_transform(crs_projected) %>%
+  st_buffer(100) %>%
+  st_union() %>%
+  st_transform(crs_nad83)
+```
+
+#### Figure. Map of oil field locations (red)
+
+```{r echo=FALSE}
+ggplot() +
+  geom_sf(data = st_union(cal_counties), fill = "#FFFFFF") +
+  geom_sf(data = st_geometry(calgem_fields), fill = "red", color = NA) +
+  theme_bw()
+```
+
+#### Figure. Map of locations of air quality monitors and (all) oil fields
+
+```{r echo=FALSE}
+# makes map
+ggplot() +
+  geom_sf(data = st_union(cal_counties), fill = "#FFFFFF") +
+  geom_sf(data = calgem_fields, color = "red") +
+  geom_sf(data = aqs_sites, shape = 1) +
+  theme_bw()
+```
+
+#### Figure. Map of locations of air quality monitors and oil fields within at least within 10 km of one another
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# makes 10 km buffer around monitors
+aqs_sites_buffer <- aqs_sites %>%
+  st_transform(crs_projected) %>%
+  st_buffer(10000) %>%
+  st_transform(crs_nad83)
+
+# restricts to oil fields near monitors
+calgem_fields_near_monitors <- calgem_fields %>%
+  st_intersection(aqs_sites_buffer)
+
+# restricts to monitors near oil fields
+aqs_sites_near_fields <- aqs_sites %>%
+  st_intersection(calgem_fields_near_monitors)
+
+
+# makes map
+ggplot() +
+  geom_sf(data = st_union(cal_counties), fill = "#FFFFFF") +
+  geom_sf(data = calgem_fields_near_monitors, color = "red") +
+  geom_sf(data = aqs_sites_near_fields, shape = 1) +
+  theme_bw()
+```
+
+#### Table. Monitors with at least one oil field within 10 km
+
+n = `r nrow(aqs_sites_near_fields)`
+
+```{r echo=FALSE}
+# prints list
+aqs_sites_near_fields %>%
+  mutate(Site.ID = site_id) %>%
+  as_tibble() %>%
+  select(Site.ID) %>%
+  arrange(Site.ID)
+```
+
+#### Table. Oil fields with at least one monitor within 10 km
+
+n = `r nrow(calgem_fields_near_monitors)`
+
+```{r echo=FALSE}
+# prints list
+calgem_fields_near_monitors %>%
+  mutate(Field.Name = field_name) %>%
+  as_tibble() %>%
+  select(Field.Name) %>%
+  arrange(Field.Name)
+```
+
+#### Table. Count of well sites by field
+
+Note: Well sites in preproduction and production are not mutually exclusive
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+wells_combined %>%
+  distinct(api_number, .keep_all = TRUE) %>%
+  mutate(Field.Name = field_name) %>%
+  group_by(Field.Name) %>%
+  summarize(Well.Sites.in.Preproduction = sum(drilled_1999_to_2019),
+            Well.Sites.in.Production = sum(prod_1999_to_2019),
+            Well.Sites.All = n()) %>%
+  arrange(-Well.Sites.All)
+```
+
+
+#### Table. Oil and gas production by field, sorted by oil production
+ 
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+wells_combined %>%
+  distinct(api_number, .keep_all = TRUE) %>%
+  mutate(Field.Name = field_name) %>%
+  group_by(Field.Name) %>%
+  summarize(Total.Gas.Produced = sum(gas_produced),
+            Total.Oil.Produced = sum(oil_produced)) %>%
+  arrange(-Total.Oil.Produced)
+```
+
+#### Table. Oil and gas production by field, sorted by gas production
+ 
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+wells_combined %>%
+  distinct(api_number, .keep_all = TRUE) %>%
+  mutate(Field.Name = field_name) %>%
+  group_by(Field.Name) %>%
+  summarize(Total.Gas.Produced = sum(gas_produced),
+            Total.Oil.Produced = sum(oil_produced)) %>%
+  arrange(-Total.Gas.Produced)
+```
+
+```{r include=FALSE}
+ten_most_productive_fields <- c("Midway-Sunset", "Belridge, South", "Kern River", "Cymric", "Ojai", "Lost Hills", "San Ardo", "Wilmington", "Elk Hills", "Coalinga")
+```
+
+#### Figure. Distribution of wells by type
+
+```{r echo=FALSE}
+wells_combined %>%
+  distinct(api_number, .keep_all = TRUE) %>%
+  ggplot() +
+    geom_bar(aes(as.factor(well_type))) +
+    labs(x = "Well Type", y = "Count") +
+    coord_flip() +
+    theme_classic()
+```
+
+#### Figure. Wells spudded by month
+
+
+
+#### Figure. Wells completed by month
+
+
+
+#### Figure. Distribution of months producing
+
+Data from Enverus
+
+```{r echo=FALSE}
+wells_combined %>%
+  drop_na(prod_months) %>%
+  ggplot() +
+    geom_histogram(aes(prod_months), bins = 50) +
+    labs(x = "Number of Months", y = "Count") +
+    theme_classic()
+```
+
+#### Figure. Distribution of oil produced by well-month
+
+The distribution of oil production by well-month is right-skewed and log-normal
+
+```{r echo=FALSE}
+wells_combined %>%
+  ggplot() +
+    geom_histogram(aes(log(oil_produced)), bins = 50) +
+    labs(x = "Oil Produced (Units), Logarithmic Scale", y = "Count") +
+    theme_classic()
+```
+
+#### Figure. Distribution of gas produced by well-month
+
+The distribution of gas production by well-month is right-skewed and log-normal
+
+```{r echo=FALSE}
+wells_combined %>%
+  ggplot() +
+    geom_histogram(aes(log(gas_produced)), bins = 50) +
+    labs(x = "Gas Produced (Units), Logarithmic Scale", y = "Count") +
+    theme_classic()
+```
+
+#### Figure. Distribution of BTU of gas produced by well-month
+
+The distribution of gas production by well-month is right-skewed and log-normal
+
+```{r echo=FALSE}
+wells_combined %>%
+  ggplot() +
+    geom_histogram(aes(gas_produced_btu), bins = 50) +
+    labs(x = "BTU of Gas Produced (Units)", y = "Count") +
+    theme_classic()
+```
+
+#### Figure. Distribution of API gravity of oil by well-month
+
+From [Energy Insights](https://www.mckinseyenergyinsights.com/resources/refinery-reference-desk/api-gravity/) by McKinsey:
+
+"API gravity is a commonly used index of the density of a crude oil or refined products. API stands for the American Petroleum Institute, which is the industry organization that created this measure. ¶ **Calculation of API gravity** ¶ API is calculated from a hydrocarbon's specific gravity using this formula: API = (141.5/Specific Gravity) - 131.5 ¶ **API gravity of crude oil grades** ¶ A crude oil will typically have an API between 15 and 45 degrees. Higher API indicates a lighter (lower density) crude. Lower API indicates a heavier (more dense) crude. Generally, lighter (high API) crudes are more valuable because they yield more high-value light products when run through a refinery. ¶ Light crude is typically in the 35-45 API range, which includes most of the highest valued crudes such as Brent and WTI. Crudes lighter than 45 are typically considered extra-light crude or condensates and are valued lower than light crude because they contain a lot of light ends such as propane and butane. A medium crude is in the 25-35 API range, and a heavy crude is in the 15-25 API range. Anything below 15 API would be considered an extra-heavy crude."
+
+Interpretation: Most of the crude in this data set has a low API, indicating that it is mostly heavy (< 25) and extra-heavy crude (< 15). Many well-months have an API density of 0; I'm not sure whether that indicates an extra-heavy crude or missingness.
+
+Note: The distribution of API density degrees extends beyond 100, with most < 400 and a few far above. I've set the range at 0-100 because this captures the majority of the relevant data.
+
+```{r echo=FALSE}
+wells_combined %>%
+  ggplot() +
+    geom_histogram(aes(APIGravityofOil), bins = 50) +
+    labs(x = "API Gravity of Oil (Units)", y = "Count") +
+    xlim(c(-10, 100)) +
+    theme_classic()
+```
+
+#### Figure. Distribution of days producing by well-month
+
+Generally, it appears that wells were either producing or not producing for the entire month. Note peaks at 28, 30, and 31 days, which correspond with month lengths.
+
+```{r echo=FALSE}
+wells_combined %>%
+  ggplot() +
+    geom_histogram(aes(DaysProducing), bins = 32) +
+    labs(x = "Days Producing per Month", y = "Count") +
+    theme_classic()
+```
+
+### Oil Production
+
+#### Figure. Oil production by county
+
+```{r echo=FALSE}
+wells_combined %>%
+  drop_na(oil_produced) %>%
+  group_by(county) %>%
+  summarize(oil_produced_by_county = sum(oil_produced)) %>%
+  ggplot() +
+    geom_bar(aes(x = reorder(county, oil_produced_by_county), 
+                 y = oil_produced_by_county),
+             stat = "identity") +
+    labs(x = "County", y = "Oil Production") +
+    scale_y_continuous(position = "right") +  # arranges axis labels on top
+    theme_bw() +
+    coord_flip()
+```
+
+#### Figure. Oil production by month, 2018-2019 (example wells)
+
+Example of production at a select number of the wells in the dataset
+
+```{r echo=FALSE}
+wells_combined %>%
+  # selects 
+  filter(api_number %in% c("040192418400", "041112044800", "041112046100",
+                           "041110105900", "040304517700", "041112062600",
+                           "041112077100", "041112044400", "040590683200")) %>%
+  ggplot() + 
+    geom_bar(aes(prod_month_year, oil_produced), stat = "identity") + 
+    facet_wrap(~ api_number) +
+    labs(x = "Time", y = "Oil Produced (oil units?)") +
+    theme_classic()
+```
+
+#### Figure. Oil production by month, 2018-2019 (all wells)
+
+```{r echo=FALSE}
+wells_combined %>%
+  group_by(prod_month_year) %>%
+  summarize(total_oil_produced_by_month = sum(oil_produced, na.rm = T)) %>%
+  ggplot() + 
+    geom_bar(aes(prod_month_year, total_oil_produced_by_month), 
+             stat = "identity") +
+    labs(x = "Time", y = "Oil Produced (oil units?)") +
+    theme_classic()
+```
+
+#### Figure. Oil production by month and by county, 2018-2019 (all wells)
+
+```{r echo=FALSE}
+wells_combined %>%
+  group_by(prod_month_year, county) %>%
+  summarize(total_oil_produced_by_month = sum(oil_produced, na.rm = T)) %>%
+  filter(county %in% c("Kern", "Ventura", "Los Angeles", "Monterey", "Fresno", 
+                       "Santa Barbara", "Orange", "San Luis Obispo", "Kings", 
+                       "Tulare")) %>%
+  mutate(county = as.factor(county)) %>%
+  ggplot() + 
+    geom_bar(aes(prod_month_year, total_oil_produced_by_month), 
+             stat = "identity") + 
+    facet_wrap(~ county) +
+    labs(x = "Time", y = "Oil Produced (oil units?)") +
+    theme_classic()
+```
+
+#### Figure. Oil production by month and by field, 2018-2019 (ten most productive fields)
+
+```{r echo=FALSE}
+wells_combined %>%
+  filter(field_name %in% ten_most_productive_fields) %>%  # list defined above
+  group_by(prod_month_year, field_name) %>%
+  summarize(total_oil_produced_by_month = sum(oil_produced, na.rm = T)) %>%
+  mutate(field_name = as.factor(field_name)) %>%
+  ggplot() + 
+    geom_bar(aes(prod_month_year, total_oil_produced_by_month), 
+             stat = "identity") + 
+    facet_wrap(~ field_name) +
+    labs(x = "Time", y = "Oil Produced (oil units?)") +
+    theme_classic()
+```
+
+#### Figure. Oil production by month and by well type, 2018-2019
+
+```{r echo=FALSE}
+wells_combined %>%
+  filter(well_type %in% c("CYCLIC STEAM", "OIL", "NA")) %>%
+  drop_na(oil_produced) %>%
+  ggplot() + 
+    geom_bar(aes(prod_month_year, oil_produced), stat = "identity") + 
+    facet_wrap(~ well_type) +
+    labs(x = "Time", y = "Oil Produced (oil units?)") +
+    theme_classic()
+```
+
+### Gas Production through Time
+
+#### Figure. Gas production by county
+
+```{r echo=FALSE}
+wells_combined %>%
+  drop_na(gas_produced) %>%
+  group_by(county) %>%
+  summarize(gas_produced_by_county = sum(gas_produced)) %>%
+  ggplot() +
+    geom_bar(aes(x = reorder(county, gas_produced_by_county), 
+                 y = gas_produced_by_county),
+             stat = "identity") +
+    labs(x = "County", y = "Gas Production") +
+    scale_y_continuous(position = "right") +  # arranges axis labels on top
+    theme_bw() +
+    coord_flip()
+```
+
+#### Figure. Gas production by month, 2018-2019 (all wells)
+
+```{r echo=FALSE}
+wells_combined %>%
+  group_by(prod_month_year) %>%
+  summarize(total_gas_produced_by_month = sum(gas_produced, na.rm = T)) %>%
+  ggplot() + 
+    geom_bar(aes(prod_month_year, total_gas_produced_by_month), 
+             stat = "identity") +
+    labs(x = "Time", y = "Gas Produced (gas units?)") +
+    theme_classic()
+```
+
+#### Figure. Gas production by month and by county, 2018-2019 (all wells)
+
+```{r echo=FALSE}
+wells_combined %>%
+  group_by(prod_month_year, county) %>%
+  summarize(total_gas_produced_by_month = sum(gas_produced, na.rm = T)) %>%
+  filter(county %in% c("Kern", "Butte", "San Joaquin", "Los Angeles", "Colusa",
+                       "Solano", "Sacramento", "Glenn", "Yolo")) %>%
+  mutate(county = as.factor(county)) %>%
+  ggplot() + 
+    geom_bar(aes(prod_month_year, total_gas_produced_by_month), 
+             stat = "identity") + 
+    facet_wrap(~ county) +
+    labs(x = "Time", y = "Gas Produced (oil units?)") +
+    theme_classic()
+```
+
+#### Figure. Gas production by month and by well type, 2018-2019
+
+```{r echo=FALSE}
+wells_combined %>%
+  #filter(well_type %in% c("CYCLIC STEAM", "OIL", "NA")) %>%
+  drop_na(gas_produced) %>%
+  ggplot() + 
+    geom_bar(aes(prod_month_year, gas_produced), stat = "identity") + 
+    facet_wrap(~ well_type) +
+    labs(x = "Time", y = "Gas Produced (gas units?)") +
+    theme_classic()
+```
+
+### Bivariate
+
+#### Figure. Relationship between oil and gas production by county
+
+There appears to be a separation between oil and gas production by field. Fields that produce high volumes of oil tend to produce low volumes of gas, and vice-versa.
+
+**Plot without labels**
+ 
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+wells_combined %>%
+  distinct(api_number, .keep_all = TRUE) %>%
+  group_by(county) %>%
+  summarize(Total.Gas.Produced = sum(gas_produced),
+            Total.Oil.Produced = sum(oil_produced)) %>%
+  ggplot() +
+    geom_point(aes(Total.Oil.Produced, Total.Gas.Produced), alpha = 0.6) +
+    theme_classic()
+```
+ 
+**Plot with labels**
+ 
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+wells_combined %>%
+  distinct(api_number, .keep_all = TRUE) %>%
+  group_by(county) %>%
+  summarize(Total.Gas.Produced = sum(gas_produced),
+            Total.Oil.Produced = sum(oil_produced)) %>%
+  ggplot(aes(Total.Oil.Produced, Total.Gas.Produced, label = county)) +
+    #geom_label() +
+    geom_label_repel(box.padding = 0.4, label.padding = 0.2, label.size = 0.3) +
+    geom_point(alpha = 0.6) +
+    theme_classic()
+```
+
+#### Figure. Relationship between oil and gas production by field
+
+There appears to be a separation between oil and gas production by field. Fields that produce high volumes of oil tend to produce low volumes of gas, and vice-versa.
+ 
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+wells_combined %>%
+  distinct(api_number, .keep_all = TRUE) %>%
+  mutate(Field.Name = field_name) %>%
+  group_by(Field.Name) %>%
+  summarize(Total.Gas.Produced = sum(gas_produced),
+            Total.Oil.Produced = sum(oil_produced)) %>%
+  ggplot() +
+    geom_point(aes(Total.Oil.Produced, Total.Gas.Produced), alpha = 0.6) +
+    theme_classic()
+```
+
+
+# Log
+
+Note: Move to Ch. 3 project log
+
+### 2.9.2020
+
+**Questions to answer:**
+
+  - What are the units of the oil/water/gas produced?
+  - Does the production interval from Enverus/DrillingInfo match the data from CalGEM?
+
+### 2.7.2020
+
+- I was able to successfully make a 'wells_combined' dataset today, merging the Enverus/DrillingInfo data with the CalGEM production data for 2018 and 2019.
+- To do this, I matched on API number. Note, the DrillingInfo dataset had API numbers with 13 characters/digits, and the CalGEM data had API numbers with 12 characters/digits. I had clipped the last digit of the API number from the DrillingInfo dataset, which appears to have been an extraneous 0.
+- Total number of unique wells that we have production data for: **`r wells_combined %>% distinct(api_number) %>% nrow()`**
+
+### 2.5.2020
+
+As of today, I've obtained montly oil and gas production data for 2018 and 2019 from [this website](ftp://ftp.consrv.ca.gov/pub/oil/Online_Data/Production_Injection_Data/Pre-2018_Data_Format/) hosted by CalGEM These data are available as a CSV file. Older data (1997-2017) are available as Access databases.

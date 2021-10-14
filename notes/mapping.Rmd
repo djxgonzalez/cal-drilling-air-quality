@@ -1,0 +1,680 @@
+# Roadmap to Raster Mapping
+
+# Loading necessary packages
+```{r}
+
+library(ncdf4) 
+library(sp)
+library(raster)
+library(rgdal) 
+library(ggplot2)
+library(readr)
+library(dplyr)
+library(sf)
+library(knitr)
+library(RNetCDF)
+library(rasterVis)
+library(tidyverse)
+
+```
+
+# setting knit working directory
+
+```{r, setup, include=FALSE}
+knitr::opts_knit$set(root.dir = 'C:\\Users\\Christina\\Documents\\Internships\\SURGE\\cal-drilling-air-quality')
+
+```
+
+# Opening and reading netCDF air temp data 
+
+##following [this tutorial](https://community.rstudio.com/t/how-do-i-map-netcdf-files-in-r/35859) for rasterizing and mapping NetCDF files in R
+
+### Opening data and assigning terms
+
+```{r}
+
+nc.air <- nc_open("data/raw/NARR/Daily_mean_surface_air_temperature/air.sfc.2019.nc")
+
+print(nc.air)
+attributes(nc.air$var)
+
+lon.air <- ncvar_get(nc.air,"lon")
+lat.air <- ncvar_get(nc.air,"lat")
+time.air <- ncvar_get(nc.air, "time_bnds")
+air <- ncvar_get(nc.air,"air")
+
+#convert from Kelvin to degrees celsius
+
+air <- air - 273.15
+
+```
+
+### Getting familiar
+
+```{r}
+dim(lon.air)
+lon.air[c(1:8), c(1:5)]
+attributes(nc.air$var$lon)
+
+dim(lat.air)
+lat.air[c(1:8), c(1:5)]
+attributes(nc.air$var$lat)
+
+dim(time.air)
+time.air[c(1:2), c(1:8)]
+attributes(nc.air$var$time_bnds)
+
+dim(air)
+air[c(1:8), c(1:5), 1]
+attributes(nc.air$var$air)
+
+```
+
+### filling in missing values
+
+```{r}
+fill.air <- ncatt_get(nc.air, "air", "make_missing_value")
+fill.air
+
+nc_close(nc.air)
+
+
+```
+
+## Rasterizing and plotting netCDF air temp data
+
+```{r}
+# seubsetting air temp data for January 1st, 2019
+
+air[air == fill.air$value] <- NA
+air.slice <- air[,,1]
+dim(air.slice)
+
+```
+
+```{r}
+# rasterizeg subsetted netCDF air temp data
+r <- raster(t(air.slice), xmn=min(lon.air), xmx=max(lon.air), ymn=min(lat.air), ymx=max(lat.air), crs=CRS("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs+ towgs84=0,0,0"))
+r <- flip(r, direction='y')
+```
+
+## January 1st, 2019 mean air temp NARR data
+
+```{r}
+plot(r)
+```
+
+# Reading in aqs air monitor data - creating sf object
+
+```{r}
+
+#imports the data
+aqs_sites <- read_csv("data/interim/aqs_sites.csv")
+
+#selects only the columns we need
+aqs_sites <- aqs_sites %>%
+  dplyr::select(site_id, longitude, latitude)
+
+# converts from tibble to sf object
+aqs_sites_sf <- aqs_sites %>%
+  st_as_sf(coords = c("longitude", "latitude"), crs = 4326)
+
+
+```
+
+## plotting air monitor locations
+
+```{r}
+#visualize the aqs code
+aqs_site_sf %>%
+  ggplot() +
+  geom_sf() +
+  theme_bw()
+```
+
+# Extract air temp raster values from air monitor points
+
+## Create raster stack of Jan-week1 data (JanStack) 
+
+```{r}
+
+Jan1slice <- air[,,1]
+Jan1 <- raster::raster(t(Jan1slice), xmn=min(lon.air), xmx=max(lon.air), ymn=min(lat.air), ymx=max(lat.air), crs=CRS("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs+ towgs84=0,0,0"))
+Jan1 <- flip(Jan1, direction='y')
+
+Jan2slice <- air[,,2]
+Jan2 <- raster(t(Jan2slice), xmn=min(lon.air), xmx=max(lon.air), ymn=min(lat.air), ymx=max(lat.air), crs=CRS("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs+ towgs84=0,0,0"))
+Jan2 <- flip(Jan2, direction='y')
+
+Jan3slice <- air[,,3]
+Jan3 <- raster(t(Jan3slice), xmn=min(lon.air), xmx=max(lon.air), ymn=min(lat.air), ymx=max(lat.air), crs=CRS("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs+ towgs84=0,0,0"))
+Jan3 <- flip(Jan3, direction='y')
+
+Jan4slice <- air[,,4]
+Jan4 <- raster(t(Jan4slice), xmn=min(lon.air), xmx=max(lon.air), ymn=min(lat.air), ymx=max(lat.air), crs=CRS("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs+ towgs84=0,0,0"))
+Jan4 <- flip(Jan4, direction='y')
+
+Jan5slice <- air[,,5]
+Jan5 <- raster(t(Jan5slice), xmn=min(lon.air), xmx=max(lon.air), ymn=min(lat.air), ymx=max(lat.air), crs=CRS("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs+ towgs84=0,0,0"))
+Jan5 <- flip(Jan5, direction='y')
+
+Jan6slice <- air[,,6]
+Jan6 <- raster(t(Jan2slice), xmn=min(lon.air), xmx=max(lon.air), ymn=min(lat.air), ymx=max(lat.air), crs=CRS("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs+ towgs84=0,0,0"))
+Jan6 <- flip(Jan6, direction='y')
+
+Jan7slice <- air[,,7]
+Jan7 <- raster(t(Jan7slice), xmn=min(lon.air), xmx=max(lon.air), ymn=min(lat.air), ymx=max(lat.air), crs=CRS("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs+ towgs84=0,0,0"))
+Jan7 <- flip(Jan7, direction='y')
+
+JanStack <- stack(Jan1, Jan2, Jan3, Jan4, Jan5, Jan6, Jan7)
+
+
+```
+
+
+## Overlay and extract air temperature data, following [this tutorial]("https://gisday.wordpress.com/2014/03/24/extract-raster-values-from-points-using-r/comment-page-1/")
+
+```{r}
+
+rasvalue = raster::extract(JanStack, aqs_sites_sf)
+
+#exporting result as a dataframe
+
+PointData=cbind(aqs_sites_sf,rasvalue)
+
+PointData1 <- rename(PointData, "site_id"=site_id, "Jan1"=layer.1, "Jan2"=layer.2, "Jan3"=layer.3, "Jan4"=layer.4, "Jan5"=layer.5, "Jan6"=layer.6, "Jan7"=layer.7)
+
+
+```
+
+## January week 1, 2019, mean air temperature data
+
+```{r}
+ 
+PointData1
+
+```
+
+
+# Opening and reading u/v wind vector data
+
+## Opening u-wind data and assigning terms
+```{r}
+setwd("C:/Users/Christina/Documents/Internships/SURGE/cal-drilling-air-quality")
+
+nc.windu <- nc_open("data/raw/narr/wind_u/uwnd.10m.2019.nc")
+
+attributes(nc.windu$var)
+
+lon.u <- ncvar_get(nc.windu,"lon")
+lat.u <- ncvar_get(nc.windu,"lat")
+time.u <- ncvar_get(nc.windu, "time_bnds")
+uwnd <- ncvar_get(nc.windu,"uwnd")
+
+```
+
+## Getting to know u-wind data and filling in missing values
+
+```{r}
+
+dim(uwnd)
+uwnd[c(1:2), c(1:2), c(1:5)]
+attributes(nc.windu$var$uwnd)
+
+fill.u <- ncatt_get(nc.windu, "uwnd", "make_missing_value")
+fill.u
+
+nc_close(nc.windu)
+
+uwnd[uwnd == fill.u$value] <- NA
+
+```
+
+## Opening v-wind data and assigning terms
+
+```{r}
+setwd("C:/Users/Christina/Documents/Internships/SURGE/cal-drilling-air-quality")
+
+nc.windv <- nc_open("data/raw/narr/wind_v/vwnd.10m.2019.nc")
+
+attributes(nc.windv$var)
+
+lon.v <- ncvar_get(nc.windv,"lon")
+lat.v <- ncvar_get(nc.windv,"lat")
+time.v <- ncvar_get(nc.windv, "time_bnds")
+vwnd <- ncvar_get(nc.windv,"vwnd")
+
+```
+
+## Getting to know v-wind data and filling in missing values
+
+```{r}
+dim(vwnd)
+vwnd[c(1:2), c(1:2), c(1:5)]
+attributes(nc.windv$var$vwnd)
+
+fill.v <- ncatt_get(nc.windv, "vwnd", "make_missing_value")
+fill.v
+
+nc_close(nc.windv)
+
+vwnd[vwnd == fill.v$value] <- NA
+
+```
+
+# Rasterizing u-wind and v-wind component netCDF data
+
+## Creating a raster stack of u-wind data for Jan-week1 (uStack)
+
+```{r}
+
+u1slice <- uwnd[,,1]
+u1 <- raster::raster(t(u1slice), xmn=min(lon.u), xmx=max(lon.u), ymn=min(lat.u), ymx=max(lat.u), crs=CRS("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs+ towgs84=0,0,0"))
+u1 <- flip(u1, direction='y')
+
+u2slice <- uwnd[,,2]
+u2 <- raster::raster(t(u2slice), xmn=min(lon.u), xmx=max(lon.u), ymn=min(lat.u), ymx=max(lat.u), crs=CRS("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs+ towgs84=0,0,0"))
+u2 <- flip(u2, direction='y')
+
+u3slice <- uwnd[,,3]
+u3 <- raster::raster(t(u3slice), xmn=min(lon.u), xmx=max(lon.u), ymn=min(lat.u), ymx=max(lat.u), crs=CRS("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs+ towgs84=0,0,0"))
+u3 <- flip(u3, direction='y')
+
+u4slice <- uwnd[,,4]
+u4 <- raster::raster(t(u4slice), xmn=min(lon.u), xmx=max(lon.u), ymn=min(lat.u), ymx=max(lat.u), crs=CRS("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs+ towgs84=0,0,0"))
+u4 <- flip(u4, direction='y')
+
+u5slice <- uwnd[,,5]
+u5 <- raster::raster(t(u1slice), xmn=min(lon.u), xmx=max(lon.u), ymn=min(lat.u), ymx=max(lat.u), crs=CRS("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs+ towgs84=0,0,0"))
+u5 <- flip(u5, direction='y')
+
+u6slice <- uwnd[,,6]
+u6 <- raster::raster(t(u6slice), xmn=min(lon.u), xmx=max(lon.u), ymn=min(lat.u), ymx=max(lat.u), crs=CRS("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs+ towgs84=0,0,0"))
+u6 <- flip(u6, direction='y')
+
+u7slice <- uwnd[,,7]
+u7 <- raster::raster(t(u7slice), xmn=min(lon.u), xmx=max(lon.u), ymn=min(lat.u), ymx=max(lat.u), crs=CRS("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs+ towgs84=0,0,0"))
+u7 <- flip(u7, direction='y')
+
+uStack <- stack(u1, u2, u3, u4, u5, u6, u7)
+```
+
+
+## Creating a raster stack of v-wind data for Jan-week1
+
+```{r}
+
+v1slice <- vwnd[,,1]
+v1 <- raster::raster(t(v1slice), xmn=min(lon.v), xmx=max(lon.v), ymn=min(lat.v), ymx=max(lat.v), crs=CRS("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs+ towgs84=0,0,0"))
+v1 <- flip(v1, direction='y')
+
+v2slice <- vwnd[,,2]
+v2 <- raster::raster(t(v2slice), xmn=min(lon.v), xmx=max(lon.v), ymn=min(lat.v), ymx=max(lat.v), crs=CRS("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs+ towgs84=0,0,0"))
+v2 <- flip(v2, direction='y')
+
+v3slice <- vwnd[,,3]
+v3 <- raster::raster(t(v3slice), xmn=min(lon.v), xmx=max(lon.v), ymn=min(lat.v), ymx=max(lat.v), crs=CRS("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs+ towgs84=0,0,0"))
+v3 <- flip(v3, direction='y')
+
+v4slice <- vwnd[,,4]
+v4 <- raster::raster(t(v4slice), xmn=min(lon.v), xmx=max(lon.v), ymn=min(lat.v), ymx=max(lat.v), crs=CRS("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs+ towgs84=0,0,0"))
+v4 <- flip(v4, direction='y')
+
+v5slice <- vwnd[,,5]
+v5 <- raster::raster(t(v1slice), xmn=min(lon.v), xmx=max(lon.v), ymn=min(lat.v), ymx=max(lat.v), crs=CRS("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs+ towgs84=0,0,0"))
+v5 <- flip(v5, direction='y')
+
+v6slice <- vwnd[,,6]
+v6 <- raster::raster(t(v6slice), xmn=min(lon.v), xmx=max(lon.v), ymn=min(lat.v), ymx=max(lat.v), crs=CRS("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs+ towgs84=0,0,0"))
+v6 <- flip(v6, direction='y')
+
+v7slice <- vwnd[,,7]
+v7 <- raster::raster(t(v7slice), xmn=min(lon.v), xmx=max(lon.v), ymn=min(lat.v), ymx=max(lat.v), crs=CRS("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs+ towgs84=0,0,0"))
+v7 <- flip(v7, direction='y')
+
+vStack <- stack(v1, v2, v3, v4, v5, v6, v7)
+
+```
+
+# calculating wind direction and speed for week 1 Jan 2019
+
+## calculating wind speed and wind direction
+```{r}
+ws.1.week1.2019 <- sqrt(uStack^2+vStack^2)
+wd.1.week1.2019 <- (((180/pi)*(atan2(uStack,vStack)))+180)
+
+
+```
+
+## reviewing wind direction data
+
+```{r}
+class(wd.1.week1.2019)
+
+dim(wd.1.week1.2019)
+
+wd.1.week1.2019
+
+```
+# extract wind raster values and from aqs points
+
+## extract wind speed from aqs points, and export to data table
+
+```{r}
+rasws = raster::extract(ws.1.week1.2019, aqs_site_sf)
+
+Janweek1ws=cbind(aqs_site_sf,rasws)
+
+Janweek1ws <- rename(Janweek1ws, "site_id"=site_id, "1/1/19"=layer.1, "1/2/19"=layer.2, "1/3/19"=layer.3, "1/4/19"=layer.4, "1/5/19"=layer.5, "1/6/19"=layer.6, "1/7/19"=layer.7)
+
+```
+
+
+## extract wind direction from aqs points, and export to data table
+```{r}
+
+raswd = raster::extract(wd.1.week1.2019, aqs_site_sf)
+
+Janweek1wd=cbind(aqs_site_sf,raswd)
+
+Janweek1wd <- rename(Janweek1wd, "site_id"=site_id, "1/1/19"=layer.1, "1/2/19"=layer.2, "1/3/19"=layer.3, "1/4/19"=layer.4, "1/5/19"=layer.5, "1/6/19"=layer.6, "1/7/19"=layer.7)
+
+```
+
+## Wind direction from aqs points, January week 1, 2019
+
+```{r}
+Janweek1wd
+```
+
+##  Wind speed from aqs points, January week 1, 2019
+```{r}
+Janweek1ws
+```
+
+## merging SF data frames, converting from wide to long structure
+
+```{r}
+
+Janweek1wd <- Janweek1wd %>%
+ pivot_longer(
+   cols = starts_with("1/"),
+   names_to = "Jan.date",
+   values_to = "wind_direction",
+   values_drop_na = TRUE)
+
+Janweek1ws <- Janweek1ws %>%
+ pivot_longer(
+   cols = starts_with("1/"),
+   names_to = "Jan.date",
+   values_to = "wind_speed",
+   values_drop_na = TRUE)
+
+
+
+```
+
+```{r}
+Janweek1wind <-cbind(Janweek1wd, Janweek1ws)
+
+Janweek1wind <- Janweek1wind[, !duplicated(colnames(Janweek1wind))]
+
+```
+
+
+# Creating a single upwind wedge based on wind direction and magnitude
+
+## merging narr_wind and search datasets
+
+```{r}
+search_w <- lef
+
+```
+
+
+## subsetting monitor coordinates for a single air monitor day
+
+```{r}
+#creating subset of a single air monitor
+
+monitor_1 <- dplyr::filter(Janweek1wind, Jan.date == '1/1/19' & site_id == '060010003')
+
+monitor_coord <- monitor_1 %>%
+    mutate(lat = unlist(map(monitor_1$geometry,1)),
+           long = unlist(map(monitor_1$geometry,2)))
+
+monitor_coord <- monitor_coord %>% dplyr::select(-geometry) %>%  as.tibble(monitor_coord)
+
+monitor_coord
+  
+```
+
+## calculating upwind vector point from wind direction and magnitude
+
+### calculating upwind vector and creating a matrix
+```{r}
+upwind <- matrix(c('060010003','upwind','1/1/19',NA,NA,
+                (monitor_coord$lat + 
+                   ((15/110.574) * cos(monitor_coord$wind_direction))),
+                (monitor_coord$long + 
+                   ((15/110.574)*sin(monitor_coord$wind_direction)))),
+                ncol=7, byrow=TRUE)
+
+colnames(upwind) <- c('site_id', 'point',
+                      'Jan.date', 'wind_direction',
+                      'wind_speed', 'lat', 'long') 
+
+upwind <- as.tibble(upwind)
+
+upwind$wind_direction <- as.numeric(upwind$wind_direction)
+upwind$wind_speed <- as.numeric(upwind$wind_speed)
+upwind$lat <- as.numeric(upwind$lat)
+upwind$long <- as.numeric(upwind$long)
+
+upwind
+
+```
+
+## creating new east and west upwind extensions, using calculated magnitude (15km/cos(45))
+
+```{r}
+#west
+upwindextent_west <- matrix(c('60010003','west_extent','1/1/19',NA,NA,
+                (monitor_coord$lat + 
+                   (((15/110.574)/cos(45))* 
+                       cos(monitor_coord$wind_direction + 45))),
+                 (monitor_coord$long + 
+                   (((15/110.574)/cos(45))*
+                       sin(monitor_coord$wind_direction + 45)))),
+                ncol=7, byrow=TRUE)
+
+colnames(upwindextent_west) <- c('site_id', 'point', 
+                                 'Jan.date', 'wind_direction', 
+                                 'wind_speed', 'lat', 'long')
+
+upwindextent_west <- as.tibble(upwindextent_west)
+
+upwindextent_west$wind_direction <- as.numeric(upwindextent_west$wind_direction)
+
+upwindextent_west$wind_speed <- as.numeric(upwindextent_west$wind_speed)
+
+upwindextent_west$lat <- as.numeric(upwindextent_west$lat)
+
+upwindextent_west$long <- as.numeric(upwindextent_west$long) 
+
+upwindextent_west
+
+#east
+
+upwindextent_east <- matrix(c('60010003','east_extent','1/1/19',NA,NA,
+                (monitor_coord$lat + 
+                   (((15/110.574)/cos(45)) *
+                       cos(monitor_coord$wind_direction - 45))),
+                 (monitor_coord$long + 
+                   (((15/110.574)/cos(45))*
+                       sin(monitor_coord$wind_direction - 45)))),
+                ncol=7, byrow=TRUE)
+
+colnames(upwindextent_east) <- c('site_id', 'point', 
+                                 'Jan.date', 'wind_direction', 
+                                 'wind_speed', 'lat', 'long')
+
+upwindextent_east <- as.tibble(upwindextent_east)
+
+upwindextent_east$wind_direction <- as.numeric(upwindextent_east$wind_direction)
+
+upwindextent_east$wind_speed <- as.numeric(upwindextent_east$wind_speed)
+
+upwindextent_east$lat <- as.numeric(upwindextent_east$lat)
+
+upwindextent_east$long <- as.numeric(upwindextent_east$long)
+
+upwindextent_east
+
+```
+
+## plotting the upwind tangent line with a 45 degree extent, using calculated magnitude
+
+```{r}
+upwindtangent <- full_join(upwindextent_east, upwindextent_west) %>% full_join(y = upwind) 
+
+upwindtangent <- 
+  full_join(upwindextent_east, upwindextent_west) %>% 
+  full_join(y = upwind)
+
+
+upwindtangent_sf <- upwindtangent %>% 
+  st_as_sf(coords = c("lat", "long"), crs = 4326)
+
+upwindtangent_sf %>% ggplot() +
+   geom_sf() +
+   theme_bw()
+
+```
+
+
+## selecting only coordinate data
+```{r}
+upwindextent_east_coord <- upwindextent_east %>% dplyr::select(lat, long)
+upwindextent_west_coord <- upwindextent_west %>% dplyr::select(lat, long)
+monitor_coord2 <- monitor_coord %>% dplyr::select(lat, long)
+upwind_coord <- upwind %>% dplyr::select(lat, long)
+
+```
+
+```{r}
+monitor_coord_sf <- monitor_coord2 %>% 
+  st_as_sf(coords = c("lat", "long"), crs = 4326)
+
+```
+
+
+## merging coordinates to create east and west tibbles
+```{r}
+windvector_east_coord <- full_join(upwindextent_east_coord, upwind_coord) %>% full_join(y = monitor_coord2) 
+
+windvector_west_coord <- full_join(upwindextent_west_coord, upwind_coord) %>% full_join(y = monitor_coord2) 
+
+```
+
+
+## creating the wedge
+
+```{r}
+windvector_east_coord_sf <- st_as_sf(windvector_east_coord, coords = c("lat", "long"))
+
+st_crs(windvector_east_coord_sf) <- 4326
+
+windvector_east_polygon <- windvector_east_coord_sf %>% st_coordinates() %>% st_multipoint() %>% 
+  st_cast("POLYGON") 
+
+east_wedge <- st_sfc(east_wedge, crs = 4326)
+
+ggplot() +
+     geom_sf(data=windvector_east_polygon) +
+     theme_bw()
+
+windvector_west_coord_sf <- st_as_sf(windvector_west_coord, coords = c("lat", "long"))
+
+st_crs(windvector_west_coord_sf) <- 4326
+
+windvector_west_polygon <- windvector_west_coord_sf %>% st_coordinates() %>% st_multipoint() %>% 
+  st_cast("POLYGON") 
+
+west_wedge <- st_sfc(windvector_west_polygon, crs = 4326)
+
+ggplot() +
+     geom_sf(data=west_wedge) +
+     theme_bw()
+
+wedge <- st_union(east_wedge, west_wedge)
+
+ggplot() +
+     geom_sf(data=wedge) +
+     theme_bw()
+
+```
+
+## plotting annuli, monitor locations, and the wedge
+
+```{r}
+
+ggplot() +
+     geom_sf(data=wedge) +
+     geom_sf(data=monitor_coord_sf) +
+     theme_bw()
+
+```
+
+
+# STOP - excess
+
+
+## Looping through the raster fxn
+
+```{r}
+
+# write a function to process one day's slice of NARR data
+narrExtraction <- function(daily_slice) {
+  
+  daily_obs <- raster::raster(t(daily_slice), 
+                              xmn = min(lon), xmx = max(lon), 
+                              ymn = min(lat), ymx = max(lat), 
+                              crs = CRS("+proj=longlat +ellps=WGS84 +datum=WGS84 
+                                 +no_defs +towgs84=0,0,0")) %>%
+    flip(direction = 'y')
+  
+  return(daily_obs)
+}
+
+# define a list to capture the data
+my_data <- list()
+
+# write a loop to call the function
+for (i in c(1:365)) {
+    my_data[i] <- narrExtraction(air[, , i])  
+}
+
+my_data
+```
+
+
+
+
+```{r}
+my_data <- as.data.frame(cbind(x = c(1:10), y = c(11:20)))
+my_data
+```
+
+
+<<<<<<< HEAD
+
+```{r}
+for(i in c(1:10)) {
+  var <- sum(my_data[i, 1], 100)
+  print(var)
+}
+```
+=======
+>>>>>>> 3bef10223ef8b54149a04f6c0ca9479839e0127c
+

@@ -1,0 +1,150 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+
+```
+
+```{r data_input, include=FALSE}
+aqs_monitor_day <- readRDS("../../data/interim/aqs_monitor_day.rds")
+aqs_monitor_day_exp_annuli_wind <- 
+  readRDS("../../data/processed/aqs_monitor_day_exp_annuli_wind.rds")
+carb_basin <- st_read("../../data/raw/cal_epa/carb_air_basins/CaAirBasin.shp") %>%
+  st_transform(crs_nad83)
+narr_precip <- readRDS("../../data/interim/narr_precipitation.rds")
+narr_temp   <- readRDS("../../data/interim/narr_temperature.rds")
+narr_wind   <- readRDS("../../data/interim/narr_wind.rds")
+```
+
+```{r data_tidying, include=FALSE}
+# adds air basin to aqs_sites_
+aqs_basins <- read_csv("../../data/interim/aqs_sites.csv") %>% 
+  st_as_sf(coords = c("longitude", "latitude"), crs = crs_nad83) %>%
+  st_join(carb_basin) %>%
+  as_tibble() %>%
+  select(site_id, NAME) %>%
+  rename(carb_basin = NAME)
+
+aqs_monitor_day <- aqs_monitor_day %>% 
+  left_join(narr_precip, by = c("site_id", "date")) %>%
+  left_join(narr_temp,   by = c("site_id", "date")) %>%
+  left_join(narr_wind,   by = c("site_id", "date")) %>%
+  left_join(aqs_basins,  by = "site_id")
+```
+
+
+```{r}
+summary(wells_sf_new)
+```
+
+
+#### Plot. Distribution of mean daily wind direction, all sites
+
+```{r echo=FALSE, message=FALSE, warning = FALSE}
+aqs_monitor_day %>%
+  drop_na(narr_wind_direction) %>%
+  ggplot() +
+  geom_histogram(aes(narr_wind_direction), bins = 360) +
+  coord_polar(start = (-pi / 2), direction = -1) +
+  scale_x_continuous(breaks = c(0, 90, 180, 270), limits = c(0, 360)) +
+  labs(x = "", y = "") +
+  theme_bw()
+```
+
+
+#### Plot. Distribution of mean daily wind direction by month
+
+```{r echo=FALSE, message=FALSE, warning = FALSE}
+aqs_monitor_day %>%
+  drop_na(narr_wind_direction) %>%
+  mutate(month = month(date)) %>%
+  ggplot() +
+  geom_histogram(aes(narr_wind_direction), bins = 360) +
+  coord_polar(start = (-pi / 2), direction = -1) +
+  scale_x_continuous(breaks = c(0, 90, 180, 270), limits = c(0, 360)) +
+  facet_wrap(~ as.factor(month)) +
+  labs(x = "", y = "") +
+  theme_bw()
+```
+
+#### Plot. Distribution of mean daily wind direction by air basin
+
+```{r echo=FALSE, warning = FALSE}
+aqs_monitor_day %>%
+  drop_na(narr_wind_direction) %>%
+  ggplot() +
+  geom_histogram(aes(narr_wind_direction), bins = 360) +
+  coord_polar(start = (-pi / 2), direction = -1) +
+  scale_x_continuous(breaks = c(0, 90, 180, 270), limits = c(0, 360)) +
+  facet_wrap(~ as.factor(carb_basin)) +
+  labs(x = "", y = "") +
+  theme_bw()
+```
+
+### Bakersfield Oildale Monitor
+
+Site ID: 060290232
+
+#### Plot. Distribution of mean daily wind direction, Oildale (Bakersfield) site
+
+```{r echo=FALSE, message=FALSE, warning = FALSE}
+aqs_monitor_day %>%
+  filter(site_id == "060290232") %>%
+  drop_na(narr_wind_direction) %>%
+  ggplot() +
+  geom_histogram(aes(narr_wind_direction), bins = 360) +
+  labs(x = "", y = "") +
+  theme_bw()
+```
+
+#### Plot. Distribution of mean daily wind direction, Oildale (Bakersfield) site
+
+```{r echo=FALSE, message=FALSE, warning = FALSE}
+aqs_monitor_day %>%
+  filter(site_id == "060290232") %>%
+  summary()
+drop_na(narr_wind_direction) %>%
+  ggplot() +
+  geom_histogram(aes(narr_wind_direction), bins = 360) +
+  coord_polar(start = (-pi / 2), direction = -1) +
+  scale_x_continuous(breaks = c(0, 90, 180, 270), limits = c(0, 360)) +
+  labs(x = "", y = "") +
+  theme_bw()
+```
+
+#### Plot. Wind rose
+
+```{r echo=FALSE}
+aqs_monitor_day %>%
+  drop_na(wind_speed_daily_mean) %>%
+  openair::windRose(wd  = "narr_wind_direction",
+                     ws  = "narr_wind_speed")
+```
+
+
+```{r echo=FALSE}
+aqs_monitor_day %>%
+  drop_na(wind_speed_daily_mean) %>%
+  openair::windRose(wd = "wind_direction_daily_mean",
+                    ws = "wind_speed_daily_mean",
+                    type = "season")
+```
+
+
+#### Plot. Distribution of mean daily wind direction by month
+
+```{r echo=FALSE, message=FALSE, warning = FALSE}
+aqs_monitor_day %>%
+  filter(site_id == "060290232") %>%
+  drop_na(narr_wind_direction) %>%
+  mutate(month = month(date)) %>%
+  ggplot() +
+  geom_histogram(aes(narr_wind_direction), bins = 360) +
+  coord_polar(start = (-pi / 2), direction = -1) +
+  scale_x_continuous(breaks = c(0, 90, 180, 270), limits = c(0, 360)) +
+  facet_wrap(~ as.factor(month)) +
+  labs(x = "", y = "") +
+  theme_bw()
+```

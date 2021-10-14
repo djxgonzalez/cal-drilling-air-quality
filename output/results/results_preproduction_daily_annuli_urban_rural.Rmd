@@ -1,0 +1,1583 @@
+---
+title: "Results - Preproduction Well Count - Daily Annuli - Urban/Rural Stratification"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+source("../../code/0-setup/1-setup.R")
+library("lfe")
+```
+
+```{r input_data_components, include=FALSE}
+aqs_daily_annuli_preproduction_dw <-
+  readRDS("../../data/processed/aqs_daily_annuli_downwind_preprod.rds") %>%
+  rename(wells_dw_new_0to1km  = wells_new_0to1km,
+         wells_dw_new_1to2km  = wells_new_1to2km,
+         wells_dw_new_2to3km  = wells_new_2to3km,
+         wells_dw_new_3to4km  = wells_new_3to4km,
+         wells_dw_new_4to5km  = wells_new_4to5km,
+         wells_dw_new_5to6km  = wells_new_5to6km,
+         wells_dw_new_6to7km  = wells_new_6to7km,
+         wells_dw_new_7to8km  = wells_new_7to8km,
+         wells_dw_new_8to9km  = wells_new_8to9km,
+         wells_dw_new_9to10km = wells_new_9to10km) %>%
+  select(-(wells_new_10to11km:wells_new_14to15km))
+aqs_daily_annuli_preproduction_uw <- 
+  readRDS("../../data/processed/aqs_daily_annuli_upwind_preprod.rds") %>%
+  select(-(wells_new_10to11km:wells_new_14to15km))
+cal_urban <- readRDS("../../data/interim/cal_urban.rds")
+aqs_sites_urban <- read_rds("../../data/interim/aqs_sites.rds") %>%
+  st_as_sf(coords = c("longitude", "latitude"), crs = crs_nad83) %>%
+  st_intersection(cal_urban) %>%
+  as_tibble() %>%
+  select(monitor_id)
+aqs_sites_rural <- read_rds("../../data/interim/aqs_sites.rds") %>% 
+  select(monitor_id) %>%
+  filter(monitor_id %!in% aqs_sites_urban$monitor_id)
+
+wells_sf    <- readRDS("../../data/interim/wells_interim.rds") %>%
+  filter(preprod_1999_to_2019 == 1) %>%
+  st_as_sf(coords = c("longitude", "latitude"), crs = crs_nad83)
+```
+
+
+# Gases
+
+## Pollutant: Nitrogen Dioxide (NO2)
+
+### Urban
+
+**Descriptive statistics:**
+
+- n monitor days = `r aqs_daily_annuli_preproduction_uw %>% filter(monitor_id %in% aqs_sites_urban$monitor_id) %>% filter(no2_concentration_daily_max >= 0) %>% distinct(monitor_day) %>% nrow()`
+- n monitors in analytic data = `r aqs_daily_annuli_preproduction_uw %>% filter(monitor_id %in% aqs_sites_urban$monitor_id) %>% filter(no2_concentration_daily_max >= 0) %>% distinct(monitor_id) %>% nrow()`
+
+```{r include=FALSE}
+covars <- aqs_daily_annuli_preproduction_uw %>%
+  filter(monitor_id %in% aqs_sites_urban$monitor_id) %>%
+  filter(no2_concentration_daily_max >= 0) %>%
+  inner_join(aqs_daily_annuli_preproduction_dw) %>%
+  distinct(monitor_day, .keep_all = TRUE) %>%
+  select(-no2_concentration_daily_max)
+data_in <- aqs_daily_annuli_preproduction_uw %>%
+  filter(monitor_id %in% aqs_sites_urban$monitor_id) %>%
+  filter(no2_concentration_daily_max >= 0) %>%
+  group_by(monitor_day) %>%
+  summarize(no2_concentration_daily_max = 
+              mean(no2_concentration_daily_max)) %>%
+  left_join(covars, by = "monitor_day")
+```
+
+
+#### Adjusted linear regression model with monitor + month + basin:year FE
+
+```{r echo=FALSE}
+model_fit <- felm(no2_concentration_daily_max ~ 
+                    wells_new_0to1km +
+                    wells_new_1to2km +
+                    wells_new_2to3km +
+                    wells_new_3to4km +
+                    wells_new_4to5km +
+                    wells_new_5to6km +
+                    wells_new_6to7km +
+                    wells_new_7to8km +
+                    wells_new_8to9km +
+                    wells_new_9to10km +
+                    wells_dw_new_0to1km +
+                    wells_dw_new_1to2km +
+                    wells_dw_new_2to3km +
+                    wells_dw_new_3to4km +
+                    wells_dw_new_4to5km +
+                    wells_dw_new_5to6km +
+                    wells_dw_new_6to7km +
+                    wells_dw_new_7to8km +
+                    wells_dw_new_8to9km +
+                    wells_dw_new_9to10km +
+                    narr_precip +
+                    narr_temp +
+                    narr_wind_direction
+                  | monitor_id + 
+                    factor(month(date)) +
+                    factor(carb_basin):factor(year(date)),
+                  data = data_in)
+summary(model_fit)
+```
+
+**Table**
+
+```{r echo=FALSE}
+model_output <-
+  tibble(
+    distance  = c("0-1", "1-2", "2-3", "3-4", "4-5",
+                  "5-6", "6-7", "7-8", "8-9", "9-10",
+                  "0-1", "1-2", "2-3", "3-4", "4-5",
+                  "5-6", "6-7", "7-8", "8-9", "9-10"),
+    distance_ordinal = c(1:10, 1:10), 
+    direction = c("Upwind", "Upwind", "Upwind", "Upwind", "Upwind",
+                  "Upwind", "Upwind", "Upwind", "Upwind", "Upwind",
+                  "Downwind", "Downwind", "Downwind", "Downwind", "Downwind",
+                  "Downwind", "Downwind", "Downwind", "Downwind", "Downwind"),
+    point_est = coef(model_fit)[1:20],
+    ci_lower  = confint(model_fit)[1:20],
+    ci_upper  = confint(model_fit)[24:43])
+saveRDS(model_output, file = "upwind_downwind_preprod_gases_no2_urban.rds")
+model_output
+```
+
+**Figure**
+
+```{r echo=FALSE, warning = FALSE}
+panel_no2_urban <- ggplot() + 
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_ribbon(data = subset(model_output, direction == "Downwind"),
+              aes(x     = distance_ordinal, 
+                  y     = point_est, 
+                  ymin  = ci_lower, 
+                  ymax  = ci_upper),
+              fill = "gold3", 
+              alpha = 0.2) +
+  geom_line(data = subset(model_output, direction == "Downwind"),
+             aes(x = distance_ordinal, y = point_est),
+             color = "gold3", alpha = 0.5) + 
+  geom_ribbon(data = subset(model_output, direction == "Upwind"),
+              aes(x     = distance_ordinal, 
+                  y     = point_est, 
+                  ymin  = ci_lower, 
+                  ymax  = ci_upper),
+              fill = "purple3", 
+              alpha = 0.2) +
+  geom_line(data = subset(model_output, direction == "Upwind"),
+             aes(x = distance_ordinal, y = point_est),
+             color = "purple3", alpha = 0.5) + 
+  labs(y = "") +
+  scale_x_discrete(name = "Distance to well (km)", 
+                   limits = c("0-1", "1-2", "2-3", "3-4", "4-5",
+                              "5-6", "6-7", "7-8", "8-9", "9-10")) +
+  theme_classic() +
+  theme(legend.position = "none")
+panel_no2_urban
+```
+
+
+### Rural
+
+**Descriptive statistics:**
+
+- n monitor days = `r aqs_daily_annuli_preproduction_uw %>% filter(monitor_id %in% aqs_sites_rural$monitor_id) %>% filter(no2_concentration_daily_max >= 0) %>% distinct(monitor_day) %>% nrow()`
+- n monitors in analytic data = `r aqs_daily_annuli_preproduction_uw %>% filter(monitor_id %in% aqs_sites_rural$monitor_id) %>% filter(no2_concentration_daily_max >= 0) %>% distinct(monitor_id) %>% nrow()`
+
+```{r include=FALSE}
+# removes duplicat
+covars <- aqs_daily_annuli_preproduction_uw %>%
+  filter(monitor_id %in% aqs_sites_rural$monitor_id) %>%
+  filter(no2_concentration_daily_max >= 0) %>%
+  inner_join(aqs_daily_annuli_preproduction_dw) %>%
+  distinct(monitor_day, .keep_all = TRUE) %>%
+  select(-no2_concentration_daily_max)
+data_in <- aqs_daily_annuli_preproduction_uw %>%
+  filter(monitor_id %in% aqs_sites_rural$monitor_id) %>%
+  filter(no2_concentration_daily_max >= 0) %>%
+  group_by(monitor_day) %>%
+  summarize(no2_concentration_daily_max = 
+              mean(no2_concentration_daily_max)) %>%
+  left_join(covars, by = "monitor_day")
+```
+
+
+#### Adjusted linear regression model with monitor + month + basin:year FE
+
+```{r echo=FALSE}
+model_fit <- felm(no2_concentration_daily_max ~ 
+                    wells_new_0to1km +
+                    wells_new_1to2km +
+                    wells_new_2to3km +
+                    wells_new_3to4km +
+                    wells_new_4to5km +
+                    wells_new_5to6km +
+                    wells_new_6to7km +
+                    wells_new_7to8km +
+                    wells_new_8to9km +
+                    wells_new_9to10km +
+                    wells_dw_new_0to1km +
+                    wells_dw_new_1to2km +
+                    wells_dw_new_2to3km +
+                    wells_dw_new_3to4km +
+                    wells_dw_new_4to5km +
+                    wells_dw_new_5to6km +
+                    wells_dw_new_6to7km +
+                    wells_dw_new_7to8km +
+                    wells_dw_new_8to9km +
+                    wells_dw_new_9to10km +
+                    narr_precip +
+                    narr_temp +
+                    narr_wind_direction
+                  | monitor_id + 
+                    factor(month(date)) +
+                    factor(carb_basin):factor(year(date)),
+                  data = data_in)
+summary(model_fit)
+```
+**Table**
+
+```{r echo=FALSE}
+model_output <-
+  tibble(
+    distance  = c("0-1", "1-2", "2-3", "3-4", "4-5",
+                  "5-6", "6-7", "7-8", "8-9", "9-10",
+                  "0-1", "1-2", "2-3", "3-4", "4-5",
+                  "5-6", "6-7", "7-8", "8-9", "9-10"),
+    distance_ordinal = c(1:10, 1:10), 
+    direction = c("Upwind", "Upwind", "Upwind", "Upwind", "Upwind",
+                  "Upwind", "Upwind", "Upwind", "Upwind", "Upwind",
+                  "Downwind", "Downwind", "Downwind", "Downwind", "Downwind",
+                  "Downwind", "Downwind", "Downwind", "Downwind", "Downwind"),
+    point_est = coef(model_fit)[1:20],
+    ci_lower  = confint(model_fit)[1:20],
+    ci_upper  = confint(model_fit)[24:43])
+saveRDS(model_output, file = "upwind_downwind_preprod_gases_no2_rural.rds")
+model_output
+```
+
+**Figure**
+
+```{r echo=FALSE, warning = FALSE}
+panel_no2_rural <- ggplot() + 
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_ribbon(data = subset(model_output, direction == "Downwind"),
+              aes(x     = distance_ordinal, 
+                  y     = point_est, 
+                  ymin  = ci_lower, 
+                  ymax  = ci_upper),
+              fill = "gold3", 
+              alpha = 0.2) +
+  geom_line(data = subset(model_output, direction == "Downwind"),
+             aes(x = distance_ordinal, y = point_est),
+             color = "gold3", alpha = 0.5) + 
+  geom_ribbon(data = subset(model_output, direction == "Upwind"),
+              aes(x     = distance_ordinal, 
+                  y     = point_est, 
+                  ymin  = ci_lower, 
+                  ymax  = ci_upper),
+              fill = "purple3", 
+              alpha = 0.2) +
+  geom_line(data = subset(model_output, direction == "Upwind"),
+             aes(x = distance_ordinal, y = point_est),
+             color = "purple3", alpha = 0.5) + 
+  labs(y = "") +
+  scale_x_discrete(name = "Distance to well (km)", 
+                   limits = c("0-1", "1-2", "2-3", "3-4", "4-5",
+                              "5-6", "6-7", "7-8", "8-9", "9-10")) +
+  theme_classic() +
+  theme(legend.position = "none")
+panel_no2_rural
+```
+
+
+## Pollutant: Ozone (O3)
+
+### Urban
+
+**Descriptive statistics:**
+
+- n monitor days = `r aqs_daily_annuli_preproduction_uw %>% filter(monitor_id %in% aqs_sites_urban$monitor_id) %>% filter(o3_concentration_daily_max >= 0) %>% distinct(monitor_day) %>% nrow()`
+- n monitors in analytic data = `r aqs_daily_annuli_preproduction_uw %>% filter(monitor_id %in% aqs_sites_urban$monitor_id) %>% filter(o3_concentration_daily_max >= 0) %>% distinct(monitor_id) %>% nrow()`
+
+
+```{r include=FALSE}
+covars <- aqs_daily_annuli_preproduction_uw %>%
+  filter(monitor_id %in% aqs_sites_urban$monitor_id) %>%
+  filter(o3_concentration_daily_max >= 0) %>%
+  inner_join(aqs_daily_annuli_preproduction_dw) %>%
+  distinct(monitor_day, .keep_all = TRUE) %>%
+  select(-o3_concentration_daily_max)
+data_in <- aqs_daily_annuli_preproduction_uw %>%
+  filter(monitor_id %in% aqs_sites_urban$monitor_id) %>%
+  filter(o3_concentration_daily_max >= 0) %>%
+  group_by(monitor_day) %>%
+  summarize(o3_concentration_daily_max = 
+              mean(o3_concentration_daily_max)) %>%
+  left_join(covars, by = "monitor_day")
+```
+
+#### Linear model with monitor + month + basin:year FE
+
+```{r echo=FALSE}
+model_fit <- felm(o3_concentration_daily_max ~ 
+                    wells_new_0to1km +
+                    wells_new_1to2km +
+                    wells_new_2to3km +
+                    wells_new_3to4km +
+                    wells_new_4to5km +
+                    wells_new_5to6km +
+                    wells_new_6to7km +
+                    wells_new_7to8km +
+                    wells_new_8to9km +
+                    wells_new_9to10km +
+                    wells_dw_new_0to1km +
+                    wells_dw_new_1to2km +
+                    wells_dw_new_2to3km +
+                    wells_dw_new_3to4km +
+                    wells_dw_new_4to5km +
+                    wells_dw_new_5to6km +
+                    wells_dw_new_6to7km +
+                    wells_dw_new_7to8km +
+                    wells_dw_new_8to9km +
+                    wells_dw_new_9to10km +
+                    narr_precip +
+                    narr_temp +
+                    narr_wind_direction
+                  | monitor_id + 
+                    factor(month(date)) +
+                    factor(carb_basin):factor(year(date)),
+                  data = data_in)
+summary(model_fit)
+```
+
+
+**Table**
+
+```{r echo=FALSE}
+model_output <-
+  tibble(
+    distance  = c("0-1", "1-2", "2-3", "3-4", "4-5",
+                  "5-6", "6-7", "7-8", "8-9", "9-10",
+                  "0-1", "1-2", "2-3", "3-4", "4-5",
+                  "5-6", "6-7", "7-8", "8-9", "9-10"),
+    distance_ordinal = c(1:10, 1:10), 
+    direction = c("Upwind", "Upwind", "Upwind", "Upwind", "Upwind",
+                  "Upwind", "Upwind", "Upwind", "Upwind", "Upwind",
+                  "Downwind", "Downwind", "Downwind", "Downwind", "Downwind",
+                  "Downwind", "Downwind", "Downwind", "Downwind", "Downwind"),
+    point_est = coef(model_fit)[1:20],
+    ci_lower  = confint(model_fit)[1:20],
+    ci_upper  = confint(model_fit)[24:43])
+saveRDS(model_output, file = "upwind_downwind_preprod_gases_o3_urban.rds")
+model_output
+```
+
+**Figure**
+
+```{r echo=FALSE, warning = FALSE}
+panel_o3_urban <- ggplot() + 
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_ribbon(data = subset(model_output, direction == "Downwind"),
+              aes(x     = distance_ordinal, 
+                  y     = point_est, 
+                  ymin  = ci_lower, 
+                  ymax  = ci_upper),
+              fill = "gold3", 
+              alpha = 0.2) +
+  geom_line(data = subset(model_output, direction == "Downwind"),
+             aes(x = distance_ordinal, y = point_est),
+             color = "gold3", alpha = 0.5) + 
+  geom_ribbon(data = subset(model_output, direction == "Upwind"),
+              aes(x     = distance_ordinal, 
+                  y     = point_est, 
+                  ymin  = ci_lower, 
+                  ymax  = ci_upper),
+              fill = "purple3", 
+              alpha = 0.2) +
+  geom_line(data = subset(model_output, direction == "Upwind"),
+             aes(x = distance_ordinal, y = point_est),
+             color = "purple3", alpha = 0.5) + 
+  labs(y = "") +
+  scale_x_discrete(name = "Distance to well (km)", 
+                   limits = c("0-1", "1-2", "2-3", "3-4", "4-5",
+                              "5-6", "6-7", "7-8", "8-9", "9-10")) +
+  theme_classic() +
+  theme(legend.position = "none")
+panel_o3_urban
+```
+
+
+### Rural
+
+**Descriptive statistics:**
+
+- n monitor days = `r aqs_daily_annuli_preproduction_uw %>% filter(monitor_id %in% aqs_sites_rural$monitor_id) %>% filter(o3_concentration_daily_max >= 0) %>% distinct(monitor_day) %>% nrow()`
+- n monitors in analytic data = `r aqs_daily_annuli_preproduction_uw %>% filter(monitor_id %in% aqs_sites_rural$monitor_id) %>% filter(o3_concentration_daily_max >= 0) %>% distinct(monitor_id) %>% nrow()`
+
+
+```{r include=FALSE}
+covars <- aqs_daily_annuli_preproduction_uw %>%
+  filter(monitor_id %in% aqs_sites_rural$monitor_id) %>%
+  filter(o3_concentration_daily_max >= 0) %>%
+  inner_join(aqs_daily_annuli_preproduction_dw) %>%
+  distinct(monitor_day, .keep_all = TRUE) %>%
+  select(-o3_concentration_daily_max)
+data_in <- aqs_daily_annuli_preproduction_uw %>%
+  filter(monitor_id %in% aqs_sites_rural$monitor_id) %>%
+  filter(o3_concentration_daily_max >= 0) %>%
+  group_by(monitor_day) %>%
+  summarize(o3_concentration_daily_max = 
+              mean(o3_concentration_daily_max)) %>%
+  left_join(covars, by = "monitor_day")
+```
+
+#### Linear model with monitor + month + basin:year FE
+
+```{r echo=FALSE}
+model_fit <- felm(o3_concentration_daily_max ~ 
+                    wells_new_0to1km +
+                    wells_new_1to2km +
+                    wells_new_2to3km +
+                    wells_new_3to4km +
+                    wells_new_4to5km +
+                    wells_new_5to6km +
+                    wells_new_6to7km +
+                    wells_new_7to8km +
+                    wells_new_8to9km +
+                    wells_new_9to10km +
+                    wells_dw_new_0to1km +
+                    wells_dw_new_1to2km +
+                    wells_dw_new_2to3km +
+                    wells_dw_new_3to4km +
+                    wells_dw_new_4to5km +
+                    wells_dw_new_5to6km +
+                    wells_dw_new_6to7km +
+                    wells_dw_new_7to8km +
+                    wells_dw_new_8to9km +
+                    wells_dw_new_9to10km +
+                    narr_precip +
+                    narr_temp +
+                    narr_wind_direction
+                  | monitor_id + 
+                    factor(month(date)) +
+                    factor(carb_basin):factor(year(date)),
+                  data = data_in)
+summary(model_fit)
+```
+
+
+**Table**
+
+```{r echo=FALSE}
+model_output <-
+  tibble(
+    distance  = c("0-1", "1-2", "2-3", "3-4", "4-5",
+                  "5-6", "6-7", "7-8", "8-9", "9-10",
+                  "0-1", "1-2", "2-3", "3-4", "4-5",
+                  "5-6", "6-7", "7-8", "8-9", "9-10"),
+    distance_ordinal = c(1:10, 1:10), 
+    direction = c("Upwind", "Upwind", "Upwind", "Upwind", "Upwind",
+                  "Upwind", "Upwind", "Upwind", "Upwind", "Upwind",
+                  "Downwind", "Downwind", "Downwind", "Downwind", "Downwind",
+                  "Downwind", "Downwind", "Downwind", "Downwind", "Downwind"),
+    point_est = coef(model_fit)[1:20],
+    ci_lower  = confint(model_fit)[1:20],
+    ci_upper  = confint(model_fit)[24:43])
+saveRDS(model_output, file = "upwind_downwind_preprod_gases_o3_rural.rds")
+model_output
+```
+
+**Figure**
+
+```{r echo=FALSE, warning = FALSE}
+panel_o3_rural <- ggplot() + 
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_ribbon(data = subset(model_output, direction == "Downwind"),
+              aes(x     = distance_ordinal, 
+                  y     = point_est, 
+                  ymin  = ci_lower, 
+                  ymax  = ci_upper),
+              fill = "gold3", 
+              alpha = 0.2) +
+  geom_line(data = subset(model_output, direction == "Downwind"),
+             aes(x = distance_ordinal, y = point_est),
+             color = "gold3", alpha = 0.5) + 
+  geom_ribbon(data = subset(model_output, direction == "Upwind"),
+              aes(x     = distance_ordinal, 
+                  y     = point_est, 
+                  ymin  = ci_lower, 
+                  ymax  = ci_upper),
+              fill = "purple3", 
+              alpha = 0.2) +
+  geom_line(data = subset(model_output, direction == "Upwind"),
+             aes(x = distance_ordinal, y = point_est),
+             color = "purple3", alpha = 0.5) + 
+  labs(y = "") +
+  scale_x_discrete(name = "Distance to well (km)", 
+                   limits = c("0-1", "1-2", "2-3", "3-4", "4-5",
+                              "5-6", "6-7", "7-8", "8-9", "9-10")) +
+  theme_classic() +
+  theme(legend.position = "none")
+panel_o3_rural
+```
+
+
+**Count of new wells within 1-km bins of O3 monitors**
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+# selects monitors
+monitor_points <- aqs_daily_annuli_preproduction_uw %>% 
+  filter(o3_concentration_daily_max >= 0) %>% 
+  distinct(monitor_id, .keep_all = TRUE) %>%
+  st_as_sf(coords = c("longitude", "latitude"), crs = crs_nad83)
+
+# makes 1-km annuli around all relevant monitors
+annulus0to1 <- monitor_points %>%
+  st_transform(crs_projected) %>%
+  st_buffer(dist = 1000) %>%
+  st_union() %>%
+  st_transform(crs_nad83)
+annulus1to2 <- monitor_points %>% 
+  st_transform(crs_projected) %>%
+  st_buffer(dist = 2000) %>%
+  st_union() %>%
+  st_transform(crs_nad83)
+annulus2to3 <- monitor_points %>% 
+  st_transform(crs_projected) %>%
+  st_buffer(dist = 3000) %>%
+  st_union() %>%
+  st_transform(crs_nad83)
+annulus3to4 <- monitor_points %>% 
+  st_transform(crs_projected) %>%
+  st_buffer(dist = 4000) %>%
+  st_union() %>%
+  st_transform(crs_nad83)
+annulus4to5 <- monitor_points %>% 
+  st_transform(crs_projected) %>%
+  st_buffer(dist = 5000) %>%
+  st_union() %>%
+  st_transform(crs_nad83)
+annulus5to6 <- monitor_points %>% 
+  st_transform(crs_projected) %>%
+  st_buffer(dist = 6000) %>%
+  st_union() %>%
+  st_transform(crs_nad83)
+annulus6to7 <- monitor_points %>% 
+  st_transform(crs_projected) %>%
+  st_buffer(dist = 7000) %>%
+  st_union() %>%
+  st_transform(crs_nad83)
+annulus7to8 <- monitor_points %>% 
+  st_transform(crs_projected) %>%
+  st_buffer(dist = 8000) %>%
+  st_union() %>%
+  st_transform(crs_nad83)
+annulus8to9 <- monitor_points %>% 
+  st_transform(crs_projected) %>%
+  st_buffer(dist = 9000) %>%
+  st_union() %>%
+  st_transform(crs_nad83)
+annulus9to10 <- monitor_points %>% 
+  st_transform(crs_projected) %>%
+  st_buffer(dist = 10000) %>%
+  st_union() %>%
+  st_transform(crs_nad83)
+
+# finalizes annuli by successively clipping differences in reverse order
+annulus9to10  <- st_difference(annulus9to10,  annulus8to9)
+annulus8to9   <- st_difference(annulus8to9,   annulus7to8)
+annulus7to8   <- st_difference(annulus7to8,   annulus6to7)
+annulus6to7   <- st_difference(annulus6to7,   annulus5to6)
+annulus5to6   <- st_difference(annulus5to6,   annulus4to5)
+annulus4to5   <- st_difference(annulus4to5,   annulus3to4)
+annulus3to4   <- st_difference(annulus3to4,   annulus2to3)
+annulus2to3   <- st_difference(annulus2to3,   annulus1to2)
+annulus1to2   <- st_difference(annulus1to2,   annulus0to1)
+
+# counts wells within each buffer
+well_sum <- 
+  tibble(
+    wells_0to1  = sum(unlist(st_intersects(wells_sf, annulus0to1))),
+    wells_1to2  = sum(unlist(st_intersects(wells_sf, annulus1to2))),
+    wells_2to3  = sum(unlist(st_intersects(wells_sf, annulus2to3))),
+    wells_3to4  = sum(unlist(st_intersects(wells_sf, annulus3to4))),
+    wells_4to5  = sum(unlist(st_intersects(wells_sf, annulus4to5))),
+    wells_5to6  = sum(unlist(st_intersects(wells_sf, annulus5to6))),
+    wells_6to7  = sum(unlist(st_intersects(wells_sf, annulus6to7))),
+    wells_7to8  = sum(unlist(st_intersects(wells_sf, annulus7to8))),
+    wells_8to9  = sum(unlist(st_intersects(wells_sf, annulus8to9))),
+    wells_9to10 = sum(unlist(st_intersects(wells_sf, annulus9to10)))
+  ) %>%
+  pivot_longer(wells_0to1:wells_9to10, names_to = "bin", values_to = "count") %>%
+  mutate(distance = c("0-1", "1-2", "2-3", "3-4", "4-5",
+                      "5-6", "6-7", "7-8", "8-9", "9-10"))
+```
+
+```{r echo=FALSE}
+well_sum %>%
+  ggplot() + 
+  geom_bar(aes(as.factor(distance), count), stat = "identity") + 
+  labs(x = "Distance from monitor (km)", y = "n wells") +
+  theme_classic()
+```
+
+
+## Pollutant: Sulfur Dioxide (SO2)
+
+::::explore missing data::::
+
+### Urban
+
+**Descriptive statistics:**
+
+- n monitor days = `r aqs_daily_annuli_preproduction_uw %>% filter(monitor_id %in% aqs_sites_urban$monitor_id) %>% filter(so2_concentration_daily_max >= 0) %>% distinct(monitor_day) %>% nrow()`
+- n monitors in analytic data = `r aqs_daily_annuli_preproduction_uw %>% filter(monitor_id %in% aqs_sites_urban$monitor_id) %>% filter(so2_concentration_daily_max >= 0) %>% distinct(monitor_id) %>% nrow()`
+
+```{r include=FALSE}
+covars <- aqs_daily_annuli_preproduction_uw %>%
+  filter(monitor_id %in% aqs_sites_urban$monitor_id) %>%
+  filter(so2_concentration_daily_max >= 0) %>%
+  inner_join(aqs_daily_annuli_preproduction_dw) %>%
+  distinct(monitor_day, .keep_all = TRUE) %>%
+  select(-so2_concentration_daily_max)
+data_in <- aqs_daily_annuli_preproduction_uw %>%
+  filter(monitor_id %in% aqs_sites_urban$monitor_id) %>%
+  filter(so2_concentration_daily_max >= 0) %>%
+  group_by(monitor_day) %>%
+  summarize(so2_concentration_daily_max = 
+              mean(so2_concentration_daily_max)) %>%
+  left_join(covars, by = "monitor_day")
+```
+
+#### Linear model with monitor + month + basin:year FE
+
+```{r echo=FALSE}
+model_fit <- felm(so2_concentration_daily_max ~ 
+                    wells_new_0to1km +
+                    wells_new_1to2km +
+                    wells_new_2to3km +
+                    wells_new_3to4km +
+                    wells_new_4to5km +
+                    wells_new_5to6km +
+                    wells_new_6to7km +
+                    wells_new_7to8km +
+                    wells_new_8to9km +
+                    wells_new_9to10km +
+                    wells_dw_new_0to1km +
+                    wells_dw_new_1to2km +
+                    wells_dw_new_2to3km +
+                    wells_dw_new_3to4km +
+                    wells_dw_new_4to5km +
+                    wells_dw_new_5to6km +
+                    wells_dw_new_6to7km +
+                    wells_dw_new_7to8km +
+                    wells_dw_new_8to9km +
+                    wells_dw_new_9to10km +
+                    narr_precip + 
+                    narr_temp +
+                    narr_wind_speed
+                  | monitor_id + 
+                    factor(month(date)) +
+                    factor(carb_basin):factor(year(date)),
+                  data = data_in)
+summary(model_fit)
+```
+
+**Table**
+
+```{r echo=FALSE}
+model_output <-
+  tibble(
+    distance  = c("0-1", "1-2", "2-3", "3-4", "4-5",
+                  "5-6", "6-7", "7-8", "8-9", "9-10",
+                  "0-1", "1-2", "2-3", "3-4", "4-5",
+                  "5-6", "6-7", "7-8", "8-9", "9-10"),
+    distance_ordinal = c(1:10, 1:10), 
+    direction = c("Upwind", "Upwind", "Upwind", "Upwind", "Upwind",
+                  "Upwind", "Upwind", "Upwind", "Upwind", "Upwind",
+                  "Downwind", "Downwind", "Downwind", "Downwind", "Downwind",
+                  "Downwind", "Downwind", "Downwind", "Downwind", "Downwind"),
+    point_est = coef(model_fit)[1:20],
+    ci_lower  = confint(model_fit)[1:20],
+    ci_upper  = confint(model_fit)[24:43])
+saveRDS(model_output, file = "upwind_downwind_preprod_gases_so2_urban.rds")
+model_output
+```
+
+**Figure**
+
+```{r echo=FALSE, warning = FALSE}
+panel_so2_urban <- ggplot() + 
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_ribbon(data = subset(model_output, direction == "Downwind"),
+              aes(x     = distance_ordinal, 
+                  y     = point_est, 
+                  ymin  = ci_lower, 
+                  ymax  = ci_upper),
+              fill = "gold3", 
+              alpha = 0.2) +
+  geom_line(data = subset(model_output, direction == "Downwind"),
+             aes(x = distance_ordinal, y = point_est),
+             color = "gold3", alpha = 0.5) + 
+  geom_ribbon(data = subset(model_output, direction == "Upwind"),
+              aes(x     = distance_ordinal, 
+                  y     = point_est, 
+                  ymin  = ci_lower, 
+                  ymax  = ci_upper),
+              fill = "purple3", 
+              alpha = 0.2) +
+  geom_line(data = subset(model_output, direction == "Upwind"),
+             aes(x = distance_ordinal, y = point_est),
+             color = "purple3", alpha = 0.5) + 
+  labs(y = "") +
+  scale_x_discrete(name = "Distance to well (km)", 
+                   limits = c("0-1", "1-2", "2-3", "3-4", "4-5",
+                              "5-6", "6-7", "7-8", "8-9", "9-10")) +
+  theme_classic() +
+  theme(legend.position = "none")
+panel_so2_urban
+```
+
+### Rural
+
+**Descriptive statistics:**
+
+- n monitor days = `r aqs_daily_annuli_preproduction_uw %>% filter(monitor_id %in% aqs_sites_rural$monitor_id) %>% filter(so2_concentration_daily_max >= 0) %>% distinct(monitor_day) %>% nrow()`
+- n monitors in analytic data = `r aqs_daily_annuli_preproduction_uw %>% filter(monitor_id %in% aqs_sites_rural$monitor_id) %>% filter(so2_concentration_daily_max >= 0) %>% distinct(monitor_id) %>% nrow()`
+
+```{r include=FALSE}
+covars <- aqs_daily_annuli_preproduction_uw %>%
+  filter(monitor_id %in% aqs_sites_rural$monitor_id) %>%
+  filter(so2_concentration_daily_max >= 0) %>%
+  inner_join(aqs_daily_annuli_preproduction_dw) %>%
+  distinct(monitor_day, .keep_all = TRUE) %>%
+  select(-so2_concentration_daily_max)
+data_in <- aqs_daily_annuli_preproduction_uw %>%
+  filter(monitor_id %in% aqs_sites_rural$monitor_id) %>%
+  filter(so2_concentration_daily_max >= 0) %>%
+  group_by(monitor_day) %>%
+  summarize(so2_concentration_daily_max = 
+              mean(so2_concentration_daily_max)) %>%
+  left_join(covars, by = "monitor_day")
+```
+
+#### Linear model with monitor + month + basin:year FE
+
+```{r echo=FALSE}
+model_fit <- felm(so2_concentration_daily_max ~ 
+                    wells_new_0to1km +
+                    wells_new_1to2km +
+                    wells_new_2to3km +
+                    wells_new_3to4km +
+                    wells_new_4to5km +
+                    wells_new_5to6km +
+                    wells_new_6to7km +
+                    wells_new_7to8km +
+                    wells_new_8to9km +
+                    wells_new_9to10km +
+                    wells_dw_new_0to1km +
+                    wells_dw_new_1to2km +
+                    wells_dw_new_2to3km +
+                    wells_dw_new_3to4km +
+                    wells_dw_new_4to5km +
+                    wells_dw_new_5to6km +
+                    wells_dw_new_6to7km +
+                    wells_dw_new_7to8km +
+                    wells_dw_new_8to9km +
+                    wells_dw_new_9to10km +
+                    narr_precip + 
+                    narr_temp +
+                    narr_wind_speed
+                  | monitor_id + 
+                    factor(month(date)) +
+                    factor(carb_basin):factor(year(date)),
+                  data = data_in)
+summary(model_fit)
+```
+
+**Table**
+
+```{r echo=FALSE}
+model_output <-
+  tibble(
+    distance  = c("0-1", "1-2", "2-3", "3-4", "4-5",
+                  "5-6", "6-7", "7-8", "8-9", "9-10",
+                  "0-1", "1-2", "2-3", "3-4", "4-5",
+                  "5-6", "6-7", "7-8", "8-9", "9-10"),
+    distance_ordinal = c(1:10, 1:10), 
+    direction = c("Upwind", "Upwind", "Upwind", "Upwind", "Upwind",
+                  "Upwind", "Upwind", "Upwind", "Upwind", "Upwind",
+                  "Downwind", "Downwind", "Downwind", "Downwind", "Downwind",
+                  "Downwind", "Downwind", "Downwind", "Downwind", "Downwind"),
+    point_est = coef(model_fit)[1:20],
+    ci_lower  = confint(model_fit)[1:20],
+    ci_upper  = confint(model_fit)[24:43])
+saveRDS(model_output, file = "upwind_downwind_preprod_gases_so2_rural.rds")
+model_output
+```
+
+**Figure**
+
+```{r echo=FALSE, warning = FALSE}
+panel_so2_rural<- ggplot() + 
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_ribbon(data = subset(model_output, direction == "Downwind"),
+              aes(x     = distance_ordinal, 
+                  y     = point_est, 
+                  ymin  = ci_lower, 
+                  ymax  = ci_upper),
+              fill = "gold3", 
+              alpha = 0.2) +
+  geom_line(data = subset(model_output, direction == "Downwind"),
+             aes(x = distance_ordinal, y = point_est),
+             color = "gold3", alpha = 0.5) + 
+  geom_ribbon(data = subset(model_output, direction == "Upwind"),
+              aes(x     = distance_ordinal, 
+                  y     = point_est, 
+                  ymin  = ci_lower, 
+                  ymax  = ci_upper),
+              fill = "purple3", 
+              alpha = 0.2) +
+  geom_line(data = subset(model_output, direction == "Upwind"),
+             aes(x = distance_ordinal, y = point_est),
+             color = "purple3", alpha = 0.5) + 
+  labs(y = "") +
+  scale_x_discrete(name = "Distance to well (km)", 
+                   limits = c("0-1", "1-2", "2-3", "3-4", "4-5",
+                              "5-6", "6-7", "7-8", "8-9", "9-10")) +
+  theme_classic() +
+  theme(legend.position = "none")
+panel_so2_rural
+```
+
+
+**Count of new wells within 1-km bins of SO2 monitors**
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+# selects monitors
+monitor_points <- aqs_daily_annuli_preproduction_uw %>% 
+  filter(so2_concentration_daily_max >= 0) %>% 
+  distinct(monitor_id, .keep_all = TRUE) %>%
+  st_as_sf(coords = c("longitude", "latitude"), crs = crs_nad83)
+
+# makes 1-km annuli around all relevant monitors
+annulus0to1 <- monitor_points %>%
+  st_transform(crs_projected) %>%
+  st_buffer(dist = 1000) %>%
+  st_union() %>%
+  st_transform(crs_nad83)
+annulus1to2 <- monitor_points %>% 
+  st_transform(crs_projected) %>%
+  st_buffer(dist = 2000) %>%
+  st_union() %>%
+  st_transform(crs_nad83)
+annulus2to3 <- monitor_points %>% 
+  st_transform(crs_projected) %>%
+  st_buffer(dist = 3000) %>%
+  st_union() %>%
+  st_transform(crs_nad83)
+annulus3to4 <- monitor_points %>% 
+  st_transform(crs_projected) %>%
+  st_buffer(dist = 4000) %>%
+  st_union() %>%
+  st_transform(crs_nad83)
+annulus4to5 <- monitor_points %>% 
+  st_transform(crs_projected) %>%
+  st_buffer(dist = 5000) %>%
+  st_union() %>%
+  st_transform(crs_nad83)
+annulus5to6 <- monitor_points %>% 
+  st_transform(crs_projected) %>%
+  st_buffer(dist = 6000) %>%
+  st_union() %>%
+  st_transform(crs_nad83)
+annulus6to7 <- monitor_points %>% 
+  st_transform(crs_projected) %>%
+  st_buffer(dist = 7000) %>%
+  st_union() %>%
+  st_transform(crs_nad83)
+annulus7to8 <- monitor_points %>% 
+  st_transform(crs_projected) %>%
+  st_buffer(dist = 8000) %>%
+  st_union() %>%
+  st_transform(crs_nad83)
+annulus8to9 <- monitor_points %>% 
+  st_transform(crs_projected) %>%
+  st_buffer(dist = 9000) %>%
+  st_union() %>%
+  st_transform(crs_nad83)
+annulus9to10 <- monitor_points %>% 
+  st_transform(crs_projected) %>%
+  st_buffer(dist = 10000) %>%
+  st_union() %>%
+  st_transform(crs_nad83)
+
+# finalizes annuli by successively clipping differences in reverse order
+annulus9to10  <- st_difference(annulus9to10,  annulus8to9)
+annulus8to9   <- st_difference(annulus8to9,   annulus7to8)
+annulus7to8   <- st_difference(annulus7to8,   annulus6to7)
+annulus6to7   <- st_difference(annulus6to7,   annulus5to6)
+annulus5to6   <- st_difference(annulus5to6,   annulus4to5)
+annulus4to5   <- st_difference(annulus4to5,   annulus3to4)
+annulus3to4   <- st_difference(annulus3to4,   annulus2to3)
+annulus2to3   <- st_difference(annulus2to3,   annulus1to2)
+annulus1to2   <- st_difference(annulus1to2,   annulus0to1)
+
+# counts wells within each buffer
+well_sum <- 
+  tibble(
+    wells_0to1  = sum(unlist(st_intersects(wells_sf, annulus0to1))),
+    wells_1to2  = sum(unlist(st_intersects(wells_sf, annulus1to2))),
+    wells_2to3  = sum(unlist(st_intersects(wells_sf, annulus2to3))),
+    wells_3to4  = sum(unlist(st_intersects(wells_sf, annulus3to4))),
+    wells_4to5  = sum(unlist(st_intersects(wells_sf, annulus4to5))),
+    wells_5to6  = sum(unlist(st_intersects(wells_sf, annulus5to6))),
+    wells_6to7  = sum(unlist(st_intersects(wells_sf, annulus6to7))),
+    wells_7to8  = sum(unlist(st_intersects(wells_sf, annulus7to8))),
+    wells_8to9  = sum(unlist(st_intersects(wells_sf, annulus8to9))),
+    wells_9to10 = sum(unlist(st_intersects(wells_sf, annulus9to10)))
+  ) %>%
+  pivot_longer(wells_0to1:wells_9to10, names_to = "bin", values_to = "count") %>%
+  mutate(distance = c("0-1", "1-2", "2-3", "3-4", "4-5",
+                      "5-6", "6-7", "7-8", "8-9", "9-10"))
+```
+
+```{r echo=FALSE}
+figure_3b <- well_sum %>%
+  ggplot() + 
+  geom_bar(aes(as.factor(distance), count), stat = "identity") + 
+  labs(x = "", y = "") +
+  scale_y_continuous(position = "right") +
+  theme_classic() +
+  theme(axis.line    = element_blank(),  # removes x-axis
+        axis.text.x  = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.title.x = element_blank())
+figure_3b
+
+ggsave(filename = "figure_3b_gases_so2.png", 
+       plot = figure_3b, device = "png",
+       height = 1, width = 7,
+       path = "../../output/figures/")
+```
+
+
+# Particulate Matter
+
+## Pollutant: Fine particulate matter (PM2.5)
+
+### Urban
+
+Descriptive statistics:
+
+- n monitor days = `r aqs_daily_annuli_preproduction_uw %>% filter(monitor_id %in% aqs_sites_urban$monitor_id) %>% filter(pm2.5_concentration_daily_mean >= 0) %>% distinct(monitor_day) %>% nrow()`
+- n monitors in analytic data = `r aqs_daily_annuli_preproduction_uw %>% filter(monitor_id %in% aqs_sites_urban$monitor_id) %>% filter(pm2.5_concentration_daily_mean >= 0) %>% distinct(monitor_id) %>% nrow()`
+
+```{r include=FALSE}
+# removes duplicat
+covars <- aqs_daily_annuli_preproduction_uw %>%
+  filter(monitor_id %in% aqs_sites_urban$monitor_id) %>%
+  filter(pm2.5_concentration_daily_mean >= 0) %>% 
+  inner_join(aqs_daily_annuli_preproduction_dw) %>%
+  distinct(monitor_day, .keep_all = TRUE) %>%
+  select(-pm2.5_concentration_daily_mean)
+data_in <- aqs_daily_annuli_preproduction_uw %>%
+  filter(monitor_id %in% aqs_sites_urban$monitor_id) %>%
+  filter(pm2.5_concentration_daily_mean >= 0) %>%
+  group_by(monitor_day) %>%
+  summarize(pm2.5_concentration_daily_mean = 
+              mean(pm2.5_concentration_daily_mean)) %>%
+  left_join(covars, by = "monitor_day")
+```
+
+
+#### Adjusted linear regression model with monitor + month + basin:year FE adjusted for temp + precip
+
+```{r echo=FALSE}
+model_fit <- felm(pm2.5_concentration_daily_mean ~ 
+                    wells_new_0to1km +
+                    wells_new_1to2km +
+                    wells_new_2to3km +
+                    wells_new_3to4km +
+                    wells_new_4to5km +
+                    wells_new_5to6km +
+                    wells_new_6to7km +
+                    wells_new_7to8km +
+                    wells_new_8to9km +
+                    wells_new_9to10km +
+                    wells_dw_new_0to1km +
+                    wells_dw_new_1to2km +
+                    wells_dw_new_2to3km +
+                    wells_dw_new_3to4km +
+                    wells_dw_new_4to5km +
+                    wells_dw_new_5to6km +
+                    wells_dw_new_6to7km +
+                    wells_dw_new_7to8km +
+                    wells_dw_new_8to9km +
+                    wells_dw_new_9to10km +
+                    narr_precip + 
+                    narr_temp +
+                    narr_wind_speed
+                  | monitor_id + 
+                    factor(month(date)) +
+                    factor(carb_basin):factor(year(date)),
+                  data = data_in)
+summary(model_fit)
+```
+
+**Table**
+
+```{r echo=FALSE}
+model_output <-
+  tibble(
+    distance  = c("0-1", "1-2", "2-3", "3-4", "4-5",
+                  "5-6", "6-7", "7-8", "8-9", "9-10",
+                  "0-1", "1-2", "2-3", "3-4", "4-5",
+                  "5-6", "6-7", "7-8", "8-9", "9-10"),
+    distance_ordinal = c(1:10, 1:10), 
+    direction = c("Upwind", "Upwind", "Upwind", "Upwind", "Upwind",
+                  "Upwind", "Upwind", "Upwind", "Upwind", "Upwind",
+                  "Downwind", "Downwind", "Downwind", "Downwind", "Downwind",
+                  "Downwind", "Downwind", "Downwind", "Downwind", "Downwind"),
+    point_est = coef(model_fit)[1:20],
+    ci_lower  = confint(model_fit)[1:20],
+    ci_upper  = confint(model_fit)[24:43])
+saveRDS(model_output, file = "upwind_downwind_preprod_gases_pm25_urban.rds")
+model_output
+```
+
+**Figure**
+
+```{r echo=FALSE, warning = FALSE}
+panel_pm25_urban <- ggplot() + 
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_ribbon(data = subset(model_output, direction == "Downwind"),
+              aes(x     = distance_ordinal, 
+                  y     = point_est, 
+                  ymin  = ci_lower, 
+                  ymax  = ci_upper),
+              fill = "gold3", 
+              alpha = 0.2) +
+  geom_line(data = subset(model_output, direction == "Downwind"),
+             aes(x = distance_ordinal, y = point_est),
+             color = "gold3", alpha = 0.5) + 
+  geom_ribbon(data = subset(model_output, direction == "Upwind"),
+              aes(x     = distance_ordinal, 
+                  y     = point_est, 
+                  ymin  = ci_lower, 
+                  ymax  = ci_upper),
+              fill = "purple3", 
+              alpha = 0.2) +
+  geom_line(data = subset(model_output, direction == "Upwind"),
+             aes(x = distance_ordinal, y = point_est),
+             color = "purple3", alpha = 0.5) + 
+  labs(y = "") +
+  scale_x_discrete(name = "Distance to well (km)", 
+                   limits = c("0-1", "1-2", "2-3", "3-4", "4-5",
+                              "5-6", "6-7", "7-8", "8-9", "9-10")) +
+  theme_classic() +
+  theme(legend.position = "none")
+panel_pm25_urban
+```
+
+
+### Rural
+
+Descriptive statistics:
+
+- n monitor days = `r aqs_daily_annuli_preproduction_uw %>% filter(monitor_id %in% aqs_sites_rural$monitor_id) %>% filter(pm2.5_concentration_daily_mean >= 0) %>% distinct(monitor_day) %>% nrow()`
+- n monitors in analytic data = `r aqs_daily_annuli_preproduction_uw %>% filter(monitor_id %in% aqs_sites_rural$monitor_id) %>% filter(pm2.5_concentration_daily_mean >= 0) %>% distinct(monitor_id) %>% nrow()`
+
+```{r include=FALSE}
+# removes duplicat
+covars <- aqs_daily_annuli_preproduction_uw %>%
+  filter(monitor_id %in% aqs_sites_rural$monitor_id) %>%
+  filter(pm2.5_concentration_daily_mean >= 0) %>% 
+  inner_join(aqs_daily_annuli_preproduction_dw) %>%
+  distinct(monitor_day, .keep_all = TRUE) %>%
+  select(-pm2.5_concentration_daily_mean)
+data_in <- aqs_daily_annuli_preproduction_uw %>%
+  filter(monitor_id %in% aqs_sites_rural$monitor_id) %>%
+  filter(pm2.5_concentration_daily_mean >= 0) %>%
+  group_by(monitor_day) %>%
+  summarize(pm2.5_concentration_daily_mean = 
+              mean(pm2.5_concentration_daily_mean)) %>%
+  left_join(covars, by = "monitor_day")
+```
+
+
+#### Adjusted linear regression model with monitor + month + basin:year FE adjusted for temp + precip
+
+```{r echo=FALSE}
+model_fit <- felm(pm2.5_concentration_daily_mean ~ 
+                    wells_new_0to1km +
+                    wells_new_1to2km +
+                    wells_new_2to3km +
+                    wells_new_3to4km +
+                    wells_new_4to5km +
+                    wells_new_5to6km +
+                    wells_new_6to7km +
+                    wells_new_7to8km +
+                    wells_new_8to9km +
+                    wells_new_9to10km +
+                    wells_dw_new_0to1km +
+                    wells_dw_new_1to2km +
+                    wells_dw_new_2to3km +
+                    wells_dw_new_3to4km +
+                    wells_dw_new_4to5km +
+                    wells_dw_new_5to6km +
+                    wells_dw_new_6to7km +
+                    wells_dw_new_7to8km +
+                    wells_dw_new_8to9km +
+                    wells_dw_new_9to10km +
+                    narr_precip + 
+                    narr_temp +
+                    narr_wind_speed
+                  | monitor_id + 
+                    factor(month(date)) +
+                    factor(carb_basin):factor(year(date)),
+                  data = data_in)
+summary(model_fit)
+```
+
+
+**Table**
+
+```{r echo=FALSE}
+model_output <-
+  tibble(
+    distance  = c("0-1", "1-2", "2-3", "3-4", "4-5",
+                  "5-6", "6-7", "7-8", "8-9", "9-10",
+                  "0-1", "1-2", "2-3", "3-4", "4-5",
+                  "5-6", "6-7", "7-8", "8-9", "9-10"),
+    distance_ordinal = c(1:10, 1:10), 
+    direction = c("Upwind", "Upwind", "Upwind", "Upwind", "Upwind",
+                  "Upwind", "Upwind", "Upwind", "Upwind", "Upwind",
+                  "Downwind", "Downwind", "Downwind", "Downwind", "Downwind",
+                  "Downwind", "Downwind", "Downwind", "Downwind", "Downwind"),
+    point_est = coef(model_fit)[1:20],
+    ci_lower  = confint(model_fit)[1:20],
+    ci_upper  = confint(model_fit)[24:43])
+saveRDS(model_output, file = "upwind_downwind_preprod_gases_pm25_rural.rds")
+model_output
+```
+
+**Figure**
+
+```{r echo=FALSE, warning = FALSE}
+panel_pm25_rural <- ggplot() + 
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_ribbon(data = subset(model_output, direction == "Downwind"),
+              aes(x     = distance_ordinal, 
+                  y     = point_est, 
+                  ymin  = ci_lower, 
+                  ymax  = ci_upper),
+              fill = "gold3", 
+              alpha = 0.2) +
+  geom_line(data = subset(model_output, direction == "Downwind"),
+             aes(x = distance_ordinal, y = point_est),
+             color = "gold3", alpha = 0.5) + 
+  geom_ribbon(data = subset(model_output, direction == "Upwind"),
+              aes(x     = distance_ordinal, 
+                  y     = point_est, 
+                  ymin  = ci_lower, 
+                  ymax  = ci_upper),
+              fill = "purple3", 
+              alpha = 0.2) +
+  geom_line(data = subset(model_output, direction == "Upwind"),
+             aes(x = distance_ordinal, y = point_est),
+             color = "purple3", alpha = 0.5) + 
+  labs(y = "") +
+  scale_x_discrete(name = "Distance to well (km)", 
+                   limits = c("0-1", "1-2", "2-3", "3-4", "4-5",
+                              "5-6", "6-7", "7-8", "8-9", "9-10")) +
+  theme_classic() +
+  theme(legend.position = "none")
+panel_pm25_rural
+```
+
+
+```{r}
+d <- data_in %>%
+  filter(wells_new_4to5km > 0)
+```
+
+
+**Count of new wells within 1-km bins of PM2.5 monitors**
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+# selects monitors
+monitor_points <- aqs_daily_annuli_preproduction_uw %>% 
+  filter(pm2.5_concentration_daily_mean >= 0) %>% 
+  distinct(monitor_id, .keep_all = TRUE) %>%
+  st_as_sf(coords = c("longitude", "latitude"), crs = crs_nad83)
+
+# makes 1-km annuli around all relevant monitors
+annulus0to1 <- monitor_points %>%
+  st_transform(crs_projected) %>%
+  st_buffer(dist = 1000) %>%
+  st_union() %>%
+  st_transform(crs_nad83)
+annulus1to2 <- monitor_points %>% 
+  st_transform(crs_projected) %>%
+  st_buffer(dist = 2000) %>%
+  st_union() %>%
+  st_transform(crs_nad83)
+annulus2to3 <- monitor_points %>% 
+  st_transform(crs_projected) %>%
+  st_buffer(dist = 3000) %>%
+  st_union() %>%
+  st_transform(crs_nad83)
+annulus3to4 <- monitor_points %>% 
+  st_transform(crs_projected) %>%
+  st_buffer(dist = 4000) %>%
+  st_union() %>%
+  st_transform(crs_nad83)
+annulus4to5 <- monitor_points %>% 
+  st_transform(crs_projected) %>%
+  st_buffer(dist = 5000) %>%
+  st_union() %>%
+  st_transform(crs_nad83)
+annulus5to6 <- monitor_points %>% 
+  st_transform(crs_projected) %>%
+  st_buffer(dist = 6000) %>%
+  st_union() %>%
+  st_transform(crs_nad83)
+annulus6to7 <- monitor_points %>% 
+  st_transform(crs_projected) %>%
+  st_buffer(dist = 7000) %>%
+  st_union() %>%
+  st_transform(crs_nad83)
+annulus7to8 <- monitor_points %>% 
+  st_transform(crs_projected) %>%
+  st_buffer(dist = 8000) %>%
+  st_union() %>%
+  st_transform(crs_nad83)
+annulus8to9 <- monitor_points %>% 
+  st_transform(crs_projected) %>%
+  st_buffer(dist = 9000) %>%
+  st_union() %>%
+  st_transform(crs_nad83)
+annulus9to10 <- monitor_points %>% 
+  st_transform(crs_projected) %>%
+  st_buffer(dist = 10000) %>%
+  st_union() %>%
+  st_transform(crs_nad83)
+
+# finalizes annuli by successively clipping differences in reverse order
+annulus9to10  <- st_difference(annulus9to10,  annulus8to9)
+annulus8to9   <- st_difference(annulus8to9,   annulus7to8)
+annulus7to8   <- st_difference(annulus7to8,   annulus6to7)
+annulus6to7   <- st_difference(annulus6to7,   annulus5to6)
+annulus5to6   <- st_difference(annulus5to6,   annulus4to5)
+annulus4to5   <- st_difference(annulus4to5,   annulus3to4)
+annulus3to4   <- st_difference(annulus3to4,   annulus2to3)
+annulus2to3   <- st_difference(annulus2to3,   annulus1to2)
+annulus1to2   <- st_difference(annulus1to2,   annulus0to1)
+
+# counts wells within each buffer
+well_sum <- 
+  tibble(
+    wells_0to1  = sum(unlist(st_intersects(wells_sf, annulus0to1))),
+    wells_1to2  = sum(unlist(st_intersects(wells_sf, annulus1to2))),
+    wells_2to3  = sum(unlist(st_intersects(wells_sf, annulus2to3))),
+    wells_3to4  = sum(unlist(st_intersects(wells_sf, annulus3to4))),
+    wells_4to5  = sum(unlist(st_intersects(wells_sf, annulus4to5))),
+    wells_5to6  = sum(unlist(st_intersects(wells_sf, annulus5to6))),
+    wells_6to7  = sum(unlist(st_intersects(wells_sf, annulus6to7))),
+    wells_7to8  = sum(unlist(st_intersects(wells_sf, annulus7to8))),
+    wells_8to9  = sum(unlist(st_intersects(wells_sf, annulus8to9))),
+    wells_9to10 = sum(unlist(st_intersects(wells_sf, annulus9to10)))
+  ) %>%
+  pivot_longer(wells_0to1:wells_9to10, names_to = "bin", values_to = "count") %>%
+  mutate(distance = c("0-1", "1-2", "2-3", "3-4", "4-5",
+                      "5-6", "6-7", "7-8", "8-9", "9-10"))
+```
+
+```{r echo=FALSE}
+well_sum %>%
+  ggplot() + 
+  geom_bar(aes(as.factor(distance), count), stat = "identity") + 
+  labs(x = "Distance from monitor (km)", y = "n wells") +
+  theme_classic()
+```
+
+
+
+# VOCs
+
+## Pollutant: Total NMOC
+
+### Urban
+
+```{r include=FALSE}
+covars <- aqs_daily_annuli_preproduction_uw %>%
+  filter(monitor_id %in% aqs_sites_urban$monitor_id) %>%
+  filter(total_nmoc >= 0) %>%
+  inner_join(aqs_daily_annuli_preproduction_dw) %>%
+  distinct(monitor_day, .keep_all = TRUE) %>%
+  select(-total_nmoc)
+data_in <- aqs_daily_annuli_preproduction_uw %>%
+  filter(monitor_id %in% aqs_sites_urban$monitor_id) %>%
+  filter(total_nmoc >= 0) %>%
+  group_by(monitor_day) %>%
+  summarize(total_nmoc = 
+              mean(total_nmoc)) %>%
+  left_join(covars, by = "monitor_day")
+```
+
+Descriptive statistics:
+
+- n monitor days = `r aqs_daily_annuli_preproduction_uw %>% filter(total_nmoc >= 0) %>% distinct(monitor_day) %>% nrow()`
+- n monitors in analytic data = `r aqs_daily_annuli_preproduction_uw %>% filter(total_nmoc >= 0) %>% distinct(monitor_id) %>% nrow()`
+
+#### Linear model with monitor + month + basin:year FE
+
+```{r echo=FALSE}
+model_fit <- felm(total_nmoc ~ 
+                    wells_new_0to1km +
+                    wells_new_1to2km +
+                    wells_new_2to3km +
+                    wells_new_3to4km +
+                    wells_new_4to5km +
+                    wells_new_5to6km +
+                    wells_new_6to7km +
+                    wells_new_7to8km +
+                    wells_new_8to9km +
+                    wells_new_9to10km +
+                    wells_dw_new_0to1km +
+                    wells_dw_new_1to2km +
+                    wells_dw_new_2to3km +
+                    wells_dw_new_3to4km +
+                    wells_dw_new_4to5km +
+                    wells_dw_new_5to6km +
+                    wells_dw_new_6to7km +
+                    wells_dw_new_7to8km +
+                    wells_dw_new_8to9km +
+                    wells_dw_new_9to10km +
+                    narr_precip + 
+                    narr_temp +
+                    narr_wind_speed
+                  | monitor_id + 
+                    factor(month(date)) +
+                    factor(carb_basin):factor(year(date)),
+                  data = data_in)
+summary(model_fit)
+```
+
+**Upwind**
+
+*Table*
+
+```{r echo=FALSE}
+model_output <-
+  tibble(
+    distance  = c("0-1", "1-2", "2-3", "3-4", "4-5",
+                  "5-6", "6-7", "7-8", "8-9", "9-10"),
+    direction = "Upwind",
+    point_est = coef(model_fit)[1:10],
+    ci_lower  = confint(model_fit)[1:10],
+    ci_upper  = confint(model_fit)[24:33]
+  )
+saveRDS(model_output, file = "upwind_preprod_vocs_nmoc.rds")
+model_output
+```
+
+**Figure**
+
+```{r echo=FALSE, warning = FALSE}
+model_output %>%
+  ggplot() + 
+  geom_pointrange(aes(x = distance, y = point_est, 
+                      ymin = ci_lower, ymax = ci_upper)) + 
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  labs(x = "Distance to well (km)", 
+       y = "Marginal change in daily NMOC (units)") +
+  theme_classic()
+```
+
+
+### Rural
+
+```{r include=FALSE}
+covars <- aqs_daily_annuli_preproduction_uw %>%
+  filter(monitor_id %in% aqs_sites_rural$monitor_id) %>%
+  filter(total_nmoc >= 0) %>%
+  inner_join(aqs_daily_annuli_preproduction_dw) %>%
+  distinct(monitor_day, .keep_all = TRUE) %>%
+  select(-total_nmoc)
+data_in <- aqs_daily_annuli_preproduction_uw %>%
+  filter(monitor_id %in% aqs_sites_rural$monitor_id) %>%
+  filter(total_nmoc >= 0) %>%
+  group_by(monitor_day) %>%
+  summarize(total_nmoc = 
+              mean(total_nmoc)) %>%
+  left_join(covars, by = "monitor_day")
+```
+
+Descriptive statistics:
+
+- n monitor days = `r aqs_daily_annuli_preproduction_uw %>% filter(total_nmoc >= 0) %>% distinct(monitor_day) %>% nrow()`
+- n monitors in analytic data = `r aqs_daily_annuli_preproduction_uw %>% filter(total_nmoc >= 0) %>% distinct(monitor_id) %>% nrow()`
+
+#### Linear model with monitor + month + basin:year FE
+
+```{r echo=FALSE}
+model_fit <- felm(total_nmoc ~ 
+                    wells_new_0to1km +
+                    wells_new_1to2km +
+                    wells_new_2to3km +
+                    wells_new_3to4km +
+                    wells_new_4to5km +
+                    wells_new_5to6km +
+                    wells_new_6to7km +
+                    wells_new_7to8km +
+                    wells_new_8to9km +
+                    wells_new_9to10km +
+                    wells_dw_new_0to1km +
+                    wells_dw_new_1to2km +
+                    wells_dw_new_2to3km +
+                    wells_dw_new_3to4km +
+                    wells_dw_new_4to5km +
+                    wells_dw_new_5to6km +
+                    wells_dw_new_6to7km +
+                    wells_dw_new_7to8km +
+                    wells_dw_new_8to9km +
+                    wells_dw_new_9to10km +
+                    narr_precip + 
+                    narr_temp +
+                    narr_wind_speed
+                  | monitor_id + 
+                    factor(month(date)) +
+                    factor(carb_basin):factor(year(date)),
+                  data = data_in)
+summary(model_fit)
+```
+
+**Upwind**
+
+*Table*
+
+```{r echo=FALSE}
+model_output <-
+  tibble(
+    distance  = c("0-1", "1-2", "2-3", "3-4", "4-5",
+                  "5-6", "6-7", "7-8", "8-9", "9-10"),
+    direction = "Upwind",
+    point_est = coef(model_fit)[1:10],
+    ci_lower  = confint(model_fit)[1:10],
+    ci_upper  = confint(model_fit)[24:33]
+  )
+saveRDS(model_output, file = "upwind_preprod_vocs_nmoc_rural.rds")
+model_output
+```
+
+**Figure**
+
+```{r echo=FALSE, warning = FALSE}
+model_output %>%
+  ggplot() + 
+  geom_pointrange(aes(x = distance, y = point_est, 
+                      ymin = ci_lower, ymax = ci_upper)) + 
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  labs(x = "Distance to well (km)", 
+       y = "Marginal change in daily NMOC (units)") +
+  theme_classic()
+```
+
+
+
+**Count of new wells within 1-km bins of monitor**
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+# selects monitors
+monitor_points <- aqs_daily_annuli_preproduction_uw %>% 
+  filter(total_nmoc >= 0) %>% 
+  distinct(monitor_id, .keep_all = TRUE) %>%
+  st_as_sf(coords = c("longitude", "latitude"), crs = crs_nad83)
+
+# makes 1-km annuli around all relevant monitors
+annulus0to1 <- monitor_points %>%
+  st_transform(crs_projected) %>%
+  st_buffer(dist = 1000) %>%
+  st_union() %>%
+  st_transform(crs_nad83)
+annulus1to2 <- monitor_points %>% 
+  st_transform(crs_projected) %>%
+  st_buffer(dist = 2000) %>%
+  st_union() %>%
+  st_transform(crs_nad83)
+annulus2to3 <- monitor_points %>% 
+  st_transform(crs_projected) %>%
+  st_buffer(dist = 3000) %>%
+  st_union() %>%
+  st_transform(crs_nad83)
+annulus3to4 <- monitor_points %>% 
+  st_transform(crs_projected) %>%
+  st_buffer(dist = 4000) %>%
+  st_union() %>%
+  st_transform(crs_nad83)
+annulus4to5 <- monitor_points %>% 
+  st_transform(crs_projected) %>%
+  st_buffer(dist = 5000) %>%
+  st_union() %>%
+  st_transform(crs_nad83)
+annulus5to6 <- monitor_points %>% 
+  st_transform(crs_projected) %>%
+  st_buffer(dist = 6000) %>%
+  st_union() %>%
+  st_transform(crs_nad83)
+annulus6to7 <- monitor_points %>% 
+  st_transform(crs_projected) %>%
+  st_buffer(dist = 7000) %>%
+  st_union() %>%
+  st_transform(crs_nad83)
+annulus7to8 <- monitor_points %>% 
+  st_transform(crs_projected) %>%
+  st_buffer(dist = 8000) %>%
+  st_union() %>%
+  st_transform(crs_nad83)
+annulus8to9 <- monitor_points %>% 
+  st_transform(crs_projected) %>%
+  st_buffer(dist = 9000) %>%
+  st_union() %>%
+  st_transform(crs_nad83)
+annulus9to10 <- monitor_points %>% 
+  st_transform(crs_projected) %>%
+  st_buffer(dist = 10000) %>%
+  st_union() %>%
+  st_transform(crs_nad83)
+
+# finalizes annuli by successively clipping differences in reverse order
+annulus9to10  <- st_difference(annulus9to10,  annulus8to9)
+annulus8to9   <- st_difference(annulus8to9,   annulus7to8)
+annulus7to8   <- st_difference(annulus7to8,   annulus6to7)
+annulus6to7   <- st_difference(annulus6to7,   annulus5to6)
+annulus5to6   <- st_difference(annulus5to6,   annulus4to5)
+annulus4to5   <- st_difference(annulus4to5,   annulus3to4)
+annulus3to4   <- st_difference(annulus3to4,   annulus2to3)
+annulus2to3   <- st_difference(annulus2to3,   annulus1to2)
+annulus1to2   <- st_difference(annulus1to2,   annulus0to1)
+
+# counts wells within each buffer
+well_sum <- 
+  tibble(
+    wells_0to1  = sum(unlist(st_intersects(wells_sf, annulus0to1))),
+    wells_1to2  = sum(unlist(st_intersects(wells_sf, annulus1to2))),
+    wells_2to3  = sum(unlist(st_intersects(wells_sf, annulus2to3))),
+    wells_3to4  = sum(unlist(st_intersects(wells_sf, annulus3to4))),
+    wells_4to5  = sum(unlist(st_intersects(wells_sf, annulus4to5))),
+    wells_5to6  = sum(unlist(st_intersects(wells_sf, annulus5to6))),
+    wells_6to7  = sum(unlist(st_intersects(wells_sf, annulus6to7))),
+    wells_7to8  = sum(unlist(st_intersects(wells_sf, annulus7to8))),
+    wells_8to9  = sum(unlist(st_intersects(wells_sf, annulus8to9))),
+    wells_9to10 = sum(unlist(st_intersects(wells_sf, annulus9to10)))
+  ) %>%
+  pivot_longer(wells_0to1:wells_9to10, names_to = "bin", values_to = "count") %>%
+  mutate(distance = c("0-1", "1-2", "2-3", "3-4", "4-5",
+                      "5-6", "6-7", "7-8", "8-9", "9-10"))
+```
+
+```{r echo=FALSE}
+figure_3b <- well_sum %>%
+  ggplot() + 
+  geom_bar(aes(as.factor(distance), count), stat = "identity") + 
+  labs(x = "", y = "") +
+  scale_y_continuous(position = "right") +
+  theme_classic() +
+  theme(axis.line    = element_blank(),  # removes x-axis
+        axis.text.x  = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.title.x = element_blank())
+figure_3b
+
+ggsave(filename = "figure_3b_vocs_nmoc.png", 
+       plot = figure_3b, device = "png",
+       height = 1, width = 7,
+       path = "../../output/figures/")
+```
+
+

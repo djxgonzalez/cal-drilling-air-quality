@@ -1,0 +1,380 @@
+---
+title: "Memo - Examining PM2.5 time series data"
+output: html_notebook
+date: "2/2/2021"
+---
+
+```{r setup, include=FALSE}
+source("../../code/0-setup/1-setup.R")
+library("patchwork")
+```
+
+```{r data_input, include=FALSE}
+aqs_sites <- readRDS("../../data/interim/aqs_sites.rds")
+aqs_daily_annuli_preproduction <- 
+  readRDS("../../data/processed/aqs_daily_annuli_preproduction.rds")
+```
+
+```{r data_tidying, include=FALSE}
+data_pm25 <- aqs_daily_annuli_preproduction %>% 
+  filter(pm25_mean >= 0) %>%
+  # need to drop NAs here to add residuals below
+  drop_na(pm25_mean, narr_precip, narr_temp, narr_wind_speed, day_of_week,
+          carb_basin, month, year, monitor_id)
+model_fit <- felm(pm25_mean ~ 
+                    narr_precip + 
+                    narr_temp +
+                    narr_wind_speed +
+                    n_plume
+                  | day_of_week + 
+                    factor(carb_basin):factor(month) +
+                    factor(carb_basin):factor(year),
+                  data = data_pm25)
+data_pm25$residuals = as.numeric(residuals(model_fit))
+
+exposed_monitors <- data_pm25 %>%
+  filter(preprod_count_uw_1to2km > 0 | preprod_count_uw_2to3km > 0 | 
+           preprod_count_dw_1to2km > 0 | preprod_count_dw_2to3km > 0) %>%
+  distinct(monitor_id, .keep_all = TRUE) %>%
+  select(monitor_id)
+```
+
+## Objectives
+
+In the analyses to date, the result for PM2.5 appears clear but we want to make sure we understand what's happening under the hood. We see a significant increase in PM2.5 concentrations with an additonal well within 3 km both upwind, but not downwind, from monitors. In this memo, I examine the raw observations, exposure metrics, and residuals.
+
+
+## Analysis
+
+#### Table. Descriptive statitistics for PM25 monitors within 2 km of drilling sites
+
+```{r echo=FALSE}
+data_pm25 %>%
+  filter(preprod_count_uw_1to2km > 0 |# preprod_count_uw_2to3km > 0 | 
+           preprod_count_dw_1to2km > 0) %>%# | preprod_count_dw_2to3km > 0) %>%
+  distinct(monitor_id, .keep_all = TRUE) %>%
+  select(monitor_id, carb_basin, county, is_urban)
+```
+
+Data for exposed monitor-days (within 3 km) with PM2.5 observations come from five monitors, all of which are urban and located in the Central Valley or Los Angeles County.
+
+
+#### Plot. Exposure by year
+
+The colors correspond with different monitors
+
+```{r echo=FALSE}
+data_pm25 %>%
+  mutate(preprod_count_uw_0to3km = (preprod_count_uw_0to1km +
+                                      preprod_count_uw_1to2km +
+                                      preprod_count_uw_2to3km)) %>%
+  ggplot() +
+  geom_bar(aes(year, preprod_count_uw_0to3km, color = monitor_id), 
+           stat = "identity") +
+  theme_classic() +
+  theme(legend.position = "none")
+```
+
+Exposure at the monitors is concentrated in 2008-2015
+
+#### Plot. Correlation between upwind and downwind exposure among exposed monitors
+
+```{r echo=FALSE}
+data_pm25 %>%
+  filter(monitor_id %in% exposed_monitors$monitor_id) %>%
+  ggplot(aes(preprod_count_uw_1to2km, preprod_count_dw_1to2km)) +
+  geom_jitter(aes(color = monitor_id), alpha = 0.1) +
+  theme_classic() +
+  theme(legend.position = "none")
+```
+
+Some correlation between exposure to upwind and downwind wells
+
+
+#### Plot. Residuals x upwind exposure, exposed monitors only
+
+Residuals from adjust linear regression model with meteorological and day-of-week controls with FE for basin-month and basin-year.
+
+```{r echo=FALSE}
+data_pm25 %>%
+  filter(monitor_id %in% exposed_monitors$monitor_id) %>%
+  ggplot(aes(preprod_count_uw_1to2km, residuals)) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_point(aes(color = monitor_id), alpha = 0.1) +
+  geom_smooth(method = "lm", formula = y ~ x) +
+  theme_classic()
+```
+
+This is our primary positive result for PM2.5
+
+
+#### Plot. Residuals x downwind placebo "exposure," exposed monitors only
+
+Residuals from adjust linear regression model with meteorological and day-of-week controls with FE for basin-month and basin-year.
+
+```{r echo=FALSE}
+data_pm25 %>%
+  filter(monitor_id %in% exposed_monitors$monitor_id) %>%
+  ggplot(aes(preprod_count_dw_1to2km, residuals)) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_point(aes(color = monitor_id), alpha = 0.1) +
+  geom_smooth(method = "lm", formula = y ~ x) +
+  theme_classic()
+```
+
+A null result as we had anticipated
+
+
+#### Plot. Residuals x upwind exposure, all monitors
+
+```{r echo=FALSE}
+data_pm25 %>%
+  ggplot(aes(preprod_count_uw_1to2km, residuals)) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_point(alpha = 0.1) +
+  geom_smooth(method = "lm", formula = y ~ x) +
+  theme_classic()
+```
+
+
+#### Plot. Time series of PM2.5 at monitor 060290014 (Kern County)
+
+```{r include=FALSE}
+panel_a <- data_pm25 %>%
+  filter(monitor_id == "060290014") %>%
+  ggplot(aes(date, pm25_mean)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "loess", formula = y ~ x) +
+  labs(x = "", y = "PM2.5 (µg/m^3)") +
+  theme_classic() +
+  theme(axis.line.x  = element_blank(),  # removes x-axis
+        axis.ticks.x = element_blank(),
+        axis.text.x  = element_blank())
+```
+
+```{r include=FALSE}
+panel_b <- data_pm25 %>%
+  filter(monitor_id == "060290014") %>%
+  ggplot() +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_point(aes(date, residuals), alpha = 0.5) +
+  theme_classic() +
+  labs(x = "", y = "PM2.5 Residuals") +
+  theme(axis.line.x  = element_blank(),  # removes x-axis
+        axis.ticks.x = element_blank(),
+        axis.text.x  = element_blank())
+```
+
+```{r include=FALSE}
+panel_c <- data_pm25 %>%
+  filter(monitor_id == "060290014") %>%
+  ggplot() +
+  geom_bar(aes(date, preprod_count_uw_1to2km), stat = "identity") +
+  scale_y_continuous(breaks = 1) +
+  labs(x = "", y = "n upwind wells") +
+  theme_classic() +
+  theme(axis.line.x  = element_blank(),  # removes x-axis
+        axis.ticks.x = element_blank(),
+        axis.text.x  = element_blank())
+```
+
+```{r include=FALSE}
+panel_d <- data_pm25 %>%
+  filter(monitor_id == "060290014") %>%
+  ggplot() +
+  geom_bar(aes(date, preprod_count_dw_1to2km), stat = "identity") +
+  scale_y_continuous(breaks = 1) +
+  labs(x = "Date", y = "n downwind wells") +
+  theme_classic()
+```
+
+```{r echo=FALSE, warning=FALSE}
+figure <- panel_a / panel_b / panel_c / panel_d
+figure
+ggsave(filename = "time_series_monitor_060290014_pm25_c.png",
+       plot = figure, device = "png", height = 6, width = 6,
+       path = "../../output/figures/supplemental/")
+```
+
+Monitor 060290014 unfortunately only has 3 exposure days with wells at 2-3 km, and the rest of the exposure at 3+ km
+
+#### Plot. Time series of PM2.5 at monitor 060374002 (Los Angeles)
+
+```{r include=FALSE}
+panel_a <- data_pm25 %>%
+  filter(monitor_id == "060374002") %>%
+  ggplot(aes(date, pm25_mean)) +
+  geom_point(alpha = 0.1) +
+  geom_smooth(method = "loess", formula = y ~ x) +
+  labs(x = "", y = "PM2.5 (µg/m^3)") +
+  theme_classic() +
+  theme(axis.line.x  = element_blank(),  # removes x-axis
+        axis.ticks.x = element_blank(),
+        axis.text.x  = element_blank())
+```
+
+```{r include=FALSE}
+panel_b <- data_pm25 %>%
+  filter(monitor_id == "060374002") %>%
+  ggplot() +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_point(aes(date, residuals), alpha = 0.1) +
+  theme_classic() +
+  labs(x = "", y = "PM2.5 Residuals") +
+  theme(axis.line.x  = element_blank(),  # removes x-axis
+        axis.ticks.x = element_blank(),
+        axis.text.x  = element_blank())
+```
+
+```{r include=FALSE}
+panel_c <- data_pm25 %>%
+  filter(monitor_id == "060374002") %>%
+  ggplot() +
+  geom_bar(aes(date, preprod_count_uw_1to2km), stat = "identity") +
+  scale_y_continuous(breaks = 1) +
+  labs(x = "", y = "n upwind wells") +
+  theme_classic() +
+  theme(axis.line.x  = element_blank(),  # removes x-axis
+        axis.ticks.x = element_blank(),
+        axis.text.x  = element_blank())
+```
+
+```{r include=FALSE}
+panel_d <- data_pm25 %>%
+  filter(monitor_id == "060374002") %>%
+  ggplot() +
+  geom_bar(aes(date, preprod_count_dw_1to2km), stat = "identity") +
+  scale_y_continuous(breaks = 1) +
+  labs(x = "Date", y = "n downwind wells") +
+  theme_classic()
+```
+
+```{r echo=FALSE, warning=FALSE}
+figure <- panel_a / panel_b / panel_c / panel_d
+figure
+ggsave(filename = "time_series_monitor_060374002_pm25_c.png",
+       plot = figure, device = "png", height = 6, width = 6,
+       path = "../../output/figures/supplemental/")
+```
+
+
+#### Plot. Time series of PM2.5 at monitor 060374004 (Los Angeles)
+
+```{r include=FALSE}
+panel_a <- data_pm25 %>%
+  filter(monitor_id == "060374004") %>%
+  ggplot(aes(date, pm25_mean)) +
+  geom_point(alpha = 0.1) +
+  geom_smooth(method = "loess", formula = y ~ x) +
+  labs(x = "", y = "PM2.5 (µg/m^3)") +
+  theme_classic() +
+  theme(axis.line.x  = element_blank(),  # removes x-axis
+        axis.ticks.x = element_blank(),
+        axis.text.x  = element_blank())
+```
+
+```{r include=FALSE}
+panel_b <- data_pm25 %>%
+  filter(monitor_id == "060374004") %>%
+  ggplot() +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_point(aes(date, residuals), alpha = 0.1) +
+  theme_classic() +
+  labs(x = "", y = "PM2.5 Residuals") +
+  theme(axis.line.x  = element_blank(),  # removes x-axis
+        axis.ticks.x = element_blank(),
+        axis.text.x  = element_blank())
+```
+
+```{r include=FALSE}
+panel_c <- data_pm25 %>%
+  filter(monitor_id == "060374004") %>%
+  ggplot() +
+  geom_bar(aes(date, preprod_count_uw_1to2km), stat = "identity") +
+  scale_y_continuous(breaks = 1) +
+  labs(x = "", y = "n upwind wells") +
+  theme_classic() +
+  theme(axis.line.x  = element_blank(),  # removes x-axis
+        axis.ticks.x = element_blank(),
+        axis.text.x  = element_blank())
+```
+
+```{r include=FALSE}
+panel_d <- data_pm25 %>%
+  filter(monitor_id == "060374004") %>%
+  ggplot() +
+  geom_bar(aes(date, preprod_count_dw_1to2km), stat = "identity") +
+  scale_y_continuous(breaks = 1) +
+  labs(x = "Date", y = "n downwind wells") +
+  theme_classic()
+```
+
+```{r echo=FALSE, warning=FALSE}
+figure <- panel_a / panel_b / panel_c / panel_d
+figure
+ggsave(filename = "time_series_monitor_060374004_pm25_c.png",
+       plot = figure, device = "png", height = 6, width = 6,
+       path = "../../output/figures/supplemental/")
+```
+
+
+#### Plot. Time series of PM2.5 at monitor 060210003 (Glenn County)
+
+```{r include=FALSE}
+panel_a <- data_pm25 %>%
+  filter(monitor_id == "060210003") %>%
+  ggplot(aes(date, pm25_mean)) +
+  geom_point(alpha = 0.1) +
+  geom_smooth(method = "loess", formula = y ~ x) +
+  labs(x = "", y = "PM2.5 (µg/m^3)") +
+  theme_classic() +
+  theme(axis.line.x  = element_blank(),  # removes x-axis
+        axis.ticks.x = element_blank(),
+        axis.text.x  = element_blank())
+```
+
+```{r include=FALSE}
+panel_b <- data_pm25 %>%
+  filter(monitor_id == "060210003") %>%
+  ggplot() +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_point(aes(date, residuals), alpha = 0.1) +
+  theme_classic() +
+  labs(x = "", y = "PM2.5 Residuals") +
+  theme(axis.line.x  = element_blank(),  # removes x-axis
+        axis.ticks.x = element_blank(),
+        axis.text.x  = element_blank())
+```
+
+```{r include=FALSE}
+panel_c <- data_pm25 %>%
+  filter(monitor_id == "060210003") %>%
+  ggplot() +
+  geom_bar(aes(date, preprod_count_uw_1to2km), stat = "identity") +
+  scale_y_continuous(breaks = 1) +
+  labs(x = "", y = "n upwind wells") +
+  theme_classic() +
+  theme(axis.line.x  = element_blank(),  # removes x-axis
+        axis.ticks.x = element_blank(),
+        axis.text.x  = element_blank())
+```
+
+```{r include=FALSE}
+panel_d <- data_pm25 %>%
+  filter(monitor_id == "060210003") %>%
+  ggplot() +
+  geom_bar(aes(date, preprod_count_dw_1to2km), stat = "identity") +
+  scale_y_continuous(breaks = 1) +
+  labs(x = "Date", y = "n downwind wells") +
+  theme_classic()
+```
+
+```{r echo=FALSE, warning=FALSE}
+figure <- panel_a / panel_b / panel_c / panel_d
+figure
+ggsave(filename = "time_series_monitor_060210003_pm25_c.png",
+       plot = figure, device = "png", height = 6, width = 6,
+       path = "../../output/figures/supplemental/")
+```
+
+

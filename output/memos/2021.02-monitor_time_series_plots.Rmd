@@ -1,0 +1,146 @@
+---
+title: "Memo - "
+output: html_notebook
+date: "2/2/2021"
+---
+
+```{r setup, include=FALSE}
+source("../../code/0-setup/1-setup.R")
+library("patchwork")
+```
+
+```{r data_input, include=FALSE}
+aqs_sites <- readRDS("../../data/interim/aqs_sites.rds")
+aqs_daily_annuli_preproduction <- 
+  readRDS("../../data/processed/aqs_daily_annuli_preproduction.rds")
+#aqs_daily_annuli_production <-  # need to make and export this dataset
+#  readRDS("../../data/processed/aqs_daily_annuli_production.rds")
+```
+
+
+## Objectives
+
+In this memo, we visualize the time series of data for several monitors in the dataset.
+
+
+## Monitor
+
+Monitors near wells with PM2.5 observations: 060210003 (Glenn County), 060374002 (LA County), 060374004 (LA County)
+
+### Monitor 060374004
+
+This monitor is located in the Los Angeles County, has at least one day of exposure to preproduction wells within 2 km, and PM2.5 data.
+
+
+
+### Monitor 060290232
+
+This monitor is located in the San Joaquin Valley and has at least one day of exposure to preproduction wells within 1 km.
+
+```{r include=FALSE}
+monitor <- aqs_daily_annuli_preproduction %>%
+  filter(monitor_id == "060290232") %>%
+  filter(year %in% c(2011:2015)) %>%  # these with preprod wells nearby
+  mutate(preprod_count_within_3km = (preprod_count_uw_0to1km +
+                                       preprod_count_uw_1to2km +
+                                       preprod_count_uw_2to3km)) %>%
+  # standardizes pollutants
+  mutate(pm10_std = (pm10_mean / mean(pm10_mean, na.rm = T)),
+         o3_std = (o3_max / mean(o3_max, na.rm = T))) %>%
+  mutate(pm10_std = (pm10_std - mean(pm10_std, na.rm = T)),
+         o3_std = (o3_std - mean(o3_std, na.rm = T))) %>%
+  # standardizes covariates
+  mutate(precip_std = (narr_precip / mean(narr_precip, na.rm = T)),
+         temp_std = (narr_temp / mean(narr_temp, na.rm = T))) %>%
+  mutate(precip_std = (precip_std - mean(precip_std, na.rm = T)),
+         temp_std = (temp_std - mean(temp_std, na.rm = T)))
+```
+
+
+```{r include=FALSE}
+# makes dataset with PM2.5 residuals and covariates
+data_pm25 <- aqs_daily_annuli_preproduction %>%
+  filter(pm25_mean >= 0) %>%
+  mutate(preprod_count_within_3km = (preprod_count_uw_0to1km +
+                                       preprod_count_uw_1to2km +
+                                       preprod_count_uw_2to3km))
+model_fit <- felm(pm25_mean ~ 
+                    n_plume +
+                    narr_precip + 
+                    narr_temp +
+                    narr_wind_speed |
+                    factor(day_of_week) +
+                    factor(carb_basin):factor(month) +
+                    factor(carb_basin):factor(year),
+                  data = subset(aqs_daily_annuli_preproduction,
+                                pm25_mean >= 0))
+data_pm25$residuals <- as.numeric(residuals(model_fit))
+```
+
+
+#### Plot. Time series of PM2.5 residuals at monitor 060374002 (LA county)
+
+```{r include=FALSE}
+panel_a <- data_pm25 %>%
+  filter(monitor_id == "060374002") %>%
+  filter(year %in% c(2010:2015)) %>% 
+  ggplot() +
+  geom_point(aes(date, residuals), alpha = 0.1) +
+  theme_classic() +
+  labs(x = "", y = "PM2.5 Residuals") +
+  theme(axis.line.x  = element_blank(),  # removes x-axis
+        axis.ticks.x = element_blank(),
+        axis.text.x  = element_blank())
+```
+
+```{r include=FALSE}
+panel_b <- data_pm25 %>%
+  filter(monitor_id == "060374002") %>%
+  filter(year %in% c(2010:2015)) %>%
+  ggplot() +
+  geom_area(aes(date, preprod_count_within_3km)) +
+  labs(x = "Date", y = "n") +
+  theme_classic()
+```
+
+```{r echo=FALSE, warning=FALSE}
+figure <- panel_a / panel_b
+figure
+ggsave(filename = "time_series_monitor_060374002.png", plot = figure, device = "png",
+       height = 3, width = 4,
+       path = "../../output/figures/supplemental/")
+```
+
+#### Plot. Residuals x Preprod Count (1-2 km)
+
+```{r echo=FALSE}
+data_pm25 %>%
+  #filter(monitor_id %in% c("060374004", "060374002", "060210003")) %>%
+  #mutate(preprod_count_uw_0to3 = (preprod_count_uw_0to1km +
+  #                                  preprod_count_uw_1to2km + 
+  #                                  preprod_count_uw_2to3km)) %>%
+  ggplot(aes(preprod_count_uw_1to2km, residuals)) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_point(aes(color = monitor_id), alpha = 0.1) +
+  geom_smooth(method = lm, formula = y ~ x) +
+  ylim(-10, 30) +
+  theme_classic() +
+  theme(legend.position = "none")
+```
+
+
+#### Plot. Residuals x Preprod Count (2-3 km)
+
+```{r echo=FALSE}
+data_pm25 %>%
+  #filter(monitor_id %in% c("060374004", "060374002", "060210003")) %>%
+  #mutate(preprod_count_uw_0to3 = (preprod_count_uw_0to1km +
+  #                                  preprod_count_uw_1to2km + 
+  #                                  preprod_count_uw_2to3km)) %>%
+  ggplot(aes(preprod_count_uw_2to3km, residuals)) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_point(aes(color = monitor_id), alpha = 0.1) +
+  geom_smooth(method = lm, formula = y ~ x) +
+  theme_classic() +
+  theme(legend.position = "none")
+```

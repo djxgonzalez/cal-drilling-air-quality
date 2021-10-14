@@ -1,0 +1,446 @@
+---
+title: "Ch. 3: Oil Production and Air Quality in California"
+subtitle: "Data Exploration: Air Quality Data"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+# loads necessary packages and defines global variables
+  source("../../code/0-setup/01-setup.R")
+```
+
+```{r data_import, echo=FALSE, include=FALSE}
+# imports raw data
+  # California Air Resources Board (CARB) - administrative shapefiles
+  carb_air_basins_raw <-
+    st_read("../../data/raw/cal_epa/carb_air_basins/CaAirBasin.shp")
+  carb_air_districts_raw <-
+    st_read("../../data/raw/cal_epa/carb_air_districts/CaAirDistrict.shp")
+  
+  # CalGEM - production, shapefiles
+  calgem_fields_raw <- 
+    st_read("../../data/raw/cal_gem/field_boundaries/DOGGR_Admin_Boundaries_Master.shp")
+  
+  # DrillingInfo - oil and gas well sites
+  di_wells_raw <-
+    read_csv("../../data/raw/drillinginfo/california_wells_jan2019.csv")
+  
+# US EPA Air Quality System (AQS) - ambient air quality
+  aqs_co_raw <- list.files("../../data/raw/us_epa/air_quality_system/co", # gets names
+                            pattern = "epa_aqs_co", full.names = T) %>%
+    map_df(~read_csv(.))
+  
+  aqs_no2_raw <- list.files("../../data/raw/us_epa/air_quality_system/no2",
+                               pattern = "epa_aqs_no2", full.names = T) %>%
+    map_df(~read_csv(.))  # imports all files
+  
+  aqs_ozone_raw <- list.files("../../data/raw/us_epa/air_quality_system/ozone",
+                                 pattern = "epa_aqs_ozone", full.names = T) %>%
+    map_df(~read_csv(.))
+  
+  aqs_pm2.5_raw <- list.files("../../data/raw/us_epa/air_quality_system/pm25",
+                                 pattern = "epa_aqs_pm25", full.names = T) %>%
+    map_df(~read_csv(.))
+  
+  aqs_pm10_raw <- list.files("../../data/raw/us_epa/air_quality_system/pm10",
+                                pattern = "epa_aqs_pm10", full.names = T) %>%
+    map_df(~read_csv(.))
+  
+  aqs_so2_raw <- list.files("../../data/raw/us_epa/air_quality_system/so2", # gets names
+                           pattern = "epa_aqs_so2", full.names = T) %>%
+    map_df(~read_csv(.))  # imports all files
+```
+
+```{r data_tidying, include=FALSE}
+# loads functions for tidying the data
+  source("../../code/2-tidying/01-tidy_airnow_data.R")
+  #source("../../code/2-tidying/02-tidy_drilling_data.R")
+
+# prepares US EPA Air Quality System (AQS) data
+  aqs_co   <- prepAirQualityData(aqs_co_raw, 
+                                  "daily_max_co_concentration", 
+                                  "Daily Max 8-hour CO Concentration") %>%
+    # summarizes mean monthly concentration for each pollutant; it's easier
+    # to do this outside the prepAirQualityData function
+    group_by(site_id, month_year) %>%
+    dplyr::summarize(monthly_mean_co = mean(daily_max_co_concentration,
+                                             na.rm = TRUE))
+
+  aqs_no2   <- prepAirQualityData(aqs_no2_raw, 
+                                 "daily_max_no2_concentration", 
+                                 "Daily Max 1-hour NO2 Concentration") %>%
+    # summarizes mean monthly concentration for each pollutant; it's easier
+    # to do this outside the prepAirQualityData function
+    group_by(site_id, month_year) %>%
+    dplyr::summarize(monthly_mean_no2 = mean(daily_max_no2_concentration,
+                                             na.rm = TRUE))
+  
+  aqs_ozone <- prepAirQualityData(aqs_ozone_raw, 
+                                 "daily_max_ozone_concentration", 
+                                 "Daily Max 8-hour Ozone Concentration") %>%
+    # summarizes mean monthly concentration for each pollutant; it's easier
+    # to do this outside the prepAirQualityData function
+    group_by(site_id, month_year) %>%
+    dplyr::summarize(monthly_mean_ozone = mean(daily_max_ozone_concentration,
+                                               na.rm = TRUE))
+  
+  aqs_pm2.5 <- prepAirQualityData(aqs_pm2.5_raw, 
+                                 "daily_mean_pm2.5_concentration", 
+                                 "Daily Mean PM2.5 Concentration") %>%
+    # summarizes mean monthly concentration for each pollutant; it's easier
+    # to do this outside the prepAirQualityData function
+    group_by(site_id, month_year) %>%
+    dplyr::summarize(monthly_mean_pm2.5 = mean(daily_mean_pm2.5_concentration,
+                                               na.rm = TRUE))
+  
+  aqs_pm10  <- prepAirQualityData(aqs_pm10_raw, 
+                                 "daily_mean_pm10_concentration", 
+                                 "Daily Mean PM10 Concentration") %>%
+    # summarizes mean monthly concentration for each pollutant; it's easier
+    # to do this outside the prepAirQualityData function
+    group_by(site_id, month_year) %>%
+    dplyr::summarize(monthly_mean_pm10 = mean(daily_mean_pm10_concentration,
+                                              na.rm = TRUE))
+  
+  aqs_so2   <- prepAirQualityData(aqs_so2_raw, 
+                                  "daily_max_so2_concentration", 
+                                  "Daily Max 1-hour SO2 Concentration") %>%
+    # summarizes mean monthly concentration for each pollutant; it's easier
+    # to do this outside the prepAirQualityData function
+    group_by(site_id, month_year) %>%
+    dplyr::summarize(monthly_mean_so2 = mean(daily_max_so2_concentration,
+                                             na.rm = TRUE))
+  
+  # merges pollutant observations across all 'aqs_sites' to make one
+  # combined tibble with all observations
+  
+    # for each pollutant, creates unique id for each 'site_id_month_year'; 
+    # then uses 'aqs_no2' as the base tibble, strips redundant variables from
+    # the tibbles for the other three pollutants, and calls a left_join
+    aqs_ozone <- aqs_ozone %>%
+      # creates unique id for each site_id_month_year
+      mutate(site_id_month_year = paste(site_id, month_year, sep = "-"))
+    aqs_ozone$site_id_month_year <- 
+      as.factor(aqs_ozone$site_id_month_year)
+    
+    aqs_co <- aqs_co %>%
+      mutate(site_id_month_year = paste(site_id, month_year, sep = "-")) %>%
+      dplyr::select(site_id_month_year, site_id, monthly_mean_co)
+    
+    aqs_no2 <- aqs_no2 %>%
+      mutate(site_id_month_year = paste(site_id, month_year, sep = "-")) %>%
+      dplyr::select(site_id_month_year, site_id, monthly_mean_no2)
+    
+    aqs_pm10 <- aqs_pm10 %>%
+      mutate(site_id_month_year = paste(site_id, month_year, sep = "-")) %>%
+      dplyr::select(site_id_month_year, site_id, monthly_mean_pm10)
+    
+    aqs_pm2.5 <- aqs_pm2.5 %>%
+      mutate(site_id_month_year = paste(site_id, month_year, sep = "-")) %>%
+      dplyr::select(site_id_month_year, site_id, monthly_mean_pm2.5)
+    
+    aqs_so2 <- aqs_so2 %>%
+      mutate(site_id_month_year = paste(site_id, month_year, sep = "-")) %>%
+      dplyr::select(site_id_month_year, site_id, monthly_mean_so2)
+    
+    # makes final combined dataset
+    aqs_combined <- 
+      left_join(aqs_ozone, aqs_co, by = "site_id_month_year") %>%
+      left_join(aqs_no2, by = "site_id_month_year") %>%
+      left_join(aqs_pm10, by = "site_id_month_year") %>%
+      left_join(aqs_pm2.5, by = "site_id_month_year") %>%
+      left_join(aqs_so2, by = "site_id_month_year") %>%
+      # cleans up and arranges columns
+      mutate(site_id = site_id.x) %>%
+      dplyr::select(site_id, 
+                    month_year, 
+                    site_id_month_year, 
+                    monthly_mean_co,
+                    monthly_mean_ozone,
+                    monthly_mean_no2, 
+                    monthly_mean_pm10, 
+                    monthly_mean_pm2.5, 
+                    monthly_mean_so2)#, 
+                    #site_id.x)
+    
+    # converts 'site_id_month_year' to factor
+    aqs_combined$site_id_month_year <- 
+      as.factor(aqs_combined$site_id_month_year)
+    
+    # gets lat/long data from raw data and joins by site_id
+    aqs_lat_long <- aqs_ozone_raw %>%
+      mutate(site_id   = as.factor(`Site ID`),
+             latitude  = SITE_LATITUDE,
+             longitude = SITE_LONGITUDE) %>%
+      dplyr::select(site_id, longitude, latitude) %>%
+      distinct()
+    
+    # makes final 'aqs_combined' dataset before analysis
+    aqs_combined <- aqs_combined %>%
+      # joins lat/long data to combined airnow dataset
+      left_join(aqs_lat_long, by = "site_id") %>%
+      # adds column to capture inverse distance weighted (IDW) index
+      # in the exposure assessment below
+      mutate(idw_index = NA)
+```
+
+```{r data_tidying2, include=FALSE}
+# prepares datasets necessary for this notebook
+
+  # sites of air quality monitors, sf object
+  aqs_sites <- aqs_combined %>%
+    distinct(site_id, .keep_all = TRUE) %>%
+    st_as_sf(coords = c("longitude", "latitude"), crs = crs_nad83)
+
+  # preps CalGEM fields data; needs to happen before prepDrillingData()
+    calgem_fields <- calgem_fields_raw %>%
+      st_transform(crs_nad83) %>%
+      # renames varible names
+      mutate(field_object_id    = OBJECTID,  # not sure what this is
+             field_name         = NAME,
+             field_code         = FIELD_CODE,
+             field_area_sq_mile = AREA_SQ_MI,
+             field_area_acre    = AREA_ACRE,
+             field_perimeter    = PERIMETER,
+             field_start_date   = StartDate,
+             field_end_date     = EndDate,
+             district_name      = District) %>%
+      # keeps only the variables we need
+      select(field_object_id:district_name)
+
+  # preps DrillingInfo wells data
+  di_wells <- prepDrillingData(di_wells_raw)
+    
+  # wells in preproduction stage during the study period, sf object
+  wells_preprod <- di_wells %>%
+    filter(drilled_1999_to_2019 == 1) %>%
+    st_as_sf(coords = c("longitude", "latitude"), crs = crs_nad83)
+    
+  # wells in production stage during the study period, sf object
+  wells_prod <- di_wells %>%
+    filter(prod_1999_to_2019 == 1) %>%
+    st_as_sf(coords = c("longitude", "latitude"), crs = crs_nad83)
+  
+  # makes 5 km buffer around well sites in preproduction stage
+  wells_preprod_buffer <- wells_preprod %>%
+    # transforms objected to projected CRS, necessary before making buffer
+    st_transform(crs_projected) %>%
+    # makes 5,000 m buffer
+    st_buffer(dist = 5000) %>%  # distance in meters
+    # merges overlapping polygons
+    st_union() 
+  
+  # makes 5 km buffer around well sites in production stage
+  wells_prod_buffer <- wells_prod %>%
+    # transforms objected to projected CRS, necessary before making buffer
+    st_transform(crs_projected) %>%
+    # makes 5,000 m buffer
+    st_buffer(dist = 5000) %>%  # distance in meters
+    # merges overlapping polygons
+    st_union() 
+```
+
+### Overview
+
+This Rmarkdown notebook explores exposure data for Ch. 3 of my dissertation project. This study uses air quality and drilling from 1999 to 2019 across California.
+
+#### Data sources
+
+- California Air Resources Board - administrative shapefiles
+- Enverus (formerly DrillingInfo) - well sites
+- US EPA Air Quality System (AQS) - monitoring sites, air pollutant concentrations
+- US Census Bureau - administrative shapefiles
+
+For this project, we used data from **`r length(levels(aqs_combined$site_id))`** unique monitors from the AQS dataset. We obtained data on concentrations of four air pollutants from 1999 to 2019: CO, O3, NO2, PM10, PM2.5, and SO2. Note that not all monitors monitor all pollutants.
+
+### Air Quality Monitors
+
+#### Map. Location of air quality monitors and oil fields
+
+```{r echo=FALSE}
+# makes map
+ggplot() +
+  geom_sf(data = st_union(cal_counties), fill = "#FFFFFF") +
+  geom_sf(data = calgem_fields, color = "red") +
+  geom_sf(data = aqs_sites, shape = 1) +
+  theme_bw()
+```
+
+
+
+
+#### Map. Location of air quality monitors and air basins
+
+```{r echo=FALSE}
+# makes map
+ggplot() +
+  geom_sf(data = carb_air_basins, 
+          aes(fill = NAME), color = "#FFFFFF", alpha = 0.7) +
+  geom_sf(data = aqs_sites, shape = 1) +
+  theme_bw()
+```
+
+
+We used data on **`r di_wells %>% filter(drilled_1999_to_2019 == 1) %>% nrow()`** well sites in preproduction and **`r di_wells %>% filter(prod_1999_to_2019 == 1) %>% nrow()`** well sites in production in California during the study period (1999-2019). Note that these groups are not mutually exclusive. Well sites were most highly concentrated in the Central Valley and Southern California. 
+
+#### Map. Location of air quality monitors and well sites
+
+The orange shaded area is a 5 km buffer around well sites in preproduction stage. The dark gray shaded area is a 5 km buffer around well sites in the production stage.
+
+```{r echo=FALSE}
+ggplot() +
+  geom_sf(data = cal_counties, fill = "#000000", color = NA, alpha = 0.2) +
+  geom_sf(data = wells_prod_buffer, fill = "#000000", alpha = 0.7) +
+  geom_sf(data = wells_preprod_buffer, fill = "#f1a340", alpha = 0.7) +
+  geom_sf(data = aqs_sites, shape = 2, alpha = 0.7) +
+  theme_bw()
+```
+
+
+### Distribution of Pollutant Concentrations
+
+///// organize by pollutant? map monitors by pollutant?
+
+#### Distribution of CO Concentrations
+
+```{r echo=FALSE, warning=FALSE}
+aqs_combined %>%
+  ggplot() +
+    geom_histogram(aes(monthly_mean_co), bins = 100) + 
+    labs(x = "Mean Monthly CO Concentration (ppm)", y = "Count") + 
+    theme_classic()
+```
+
+#### Distribution of N02 Concentrations
+
+```{r echo=FALSE, warning=FALSE}
+aqs_combined %>%
+  ggplot() +
+    geom_histogram(aes(monthly_mean_no2), bins = 100) + 
+    labs(x = "Mean Monthly NO2 Concentration (ppb)", y = "Count") + 
+    theme_classic()
+```
+
+#### Distribution of Ozone Concentrations
+
+```{r echo=FALSE, warning=FALSE}
+aqs_combined %>%
+  ggplot() +
+    geom_histogram(aes(monthly_mean_ozone), bins = 100) + 
+    labs(x = "Mean Monthly Ozone Concentration (ppm)", y = "Count") + 
+    theme_classic()
+```
+
+#### Distribution of PM10 Concentrations
+
+This distibution is right-skewed
+
+```{r echo=FALSE, warning=FALSE}
+aqs_combined %>%
+  ggplot() +
+    geom_histogram(aes(monthly_mean_pm10), bins = 100) + 
+    labs(x = "Mean Monthly PM10 Concentration (µg/m^3)", y = "Count") + 
+    theme_classic()
+```
+
+#### Distribution of PM2.5 Concentrations
+
+```{r echo=FALSE, warning=FALSE}
+aqs_combined %>%
+  ggplot() +
+    geom_histogram(aes(monthly_mean_pm2.5), bins = 100) + 
+    labs(x = "Mean Monthly PM2.5 Concentration (µg/m^3)", y = "Count") + 
+    theme_classic()
+```
+
+#### Distribution of SO2 Concentrations
+
+```{r echo=FALSE, warning=FALSE}
+aqs_combined %>%
+  ggplot() +
+    geom_histogram(aes(monthly_mean_so2), bins = 100) + 
+    labs(x = "Mean Monthly SO2 Concentration (ppb)", y = "Count") + 
+    theme_classic()
+```
+
+### Pollutant Concentrations by Month
+
+#### CO Concentration by Month
+
+```{r echo=FALSE, warning=FALSE}
+aqs_combined %>%
+  ggplot() +
+    geom_point(aes(month_year, monthly_mean_co), alpha = 0.2) + 
+    labs(x = "Time", y = "Mean Monthly CO Concentration (ppm)") + 
+    theme_classic()
+```
+
+#### NO2 Concentration by Month
+
+```{r echo=FALSE, warning=FALSE}
+aqs_combined %>%
+  ggplot() +
+    geom_point(aes(month_year, monthly_mean_no2), alpha = 0.2) + 
+    labs(x = "Time", y = "Mean Monthly NO2 Concentration (ppb)") + 
+    theme_classic()
+```
+
+#### Ozone Concentration by Month
+
+```{r echo=FALSE, warning=FALSE}
+aqs_combined %>%
+  ggplot() +
+    geom_point(aes(month_year, monthly_mean_ozone), alpha = 0.2) + 
+    labs(x = "Time", y = "Mean Monthly Ozone Concentration (ppm)") + 
+    theme_classic()
+```
+
+#### PM10 Concentration by Month
+
+```{r echo=FALSE, warning=FALSE}
+aqs_combined %>%
+  ggplot() +
+    geom_point(aes(month_year, monthly_mean_pm10), alpha = 0.2) + 
+    labs(x = "Time", y = "Mean Monthly PM10 Concentration (µg/m^3)") + 
+    theme_classic()
+```
+
+#### PM2.5 Concentration by Month
+
+```{r echo=FALSE, warning=FALSE}
+aqs_combined %>%
+  ggplot() +
+    geom_point(aes(month_year, monthly_mean_pm2.5), alpha = 0.2) + 
+    labs(x = "Time", y = "Mean Monthly PM2.5 Concentration (µg/m^3)") + 
+    theme_classic()
+```
+
+#### SO2 Concentration by Month
+
+```{r echo=FALSE, warning=FALSE}
+aqs_combined %>%
+  ggplot() +
+    geom_point(aes(month_year, monthly_mean_so2), alpha = 0.2) + 
+    labs(x = "Time", y = "Mean Monthly SO2 Concentration (ppb)") + 
+    theme_classic()
+```
+
+
+
+### Concentrations by Air Basin
+
+```{r echo=FALSE, include=FALSE}
+##### move to data prep
+aqs_combined_sf <- aqs_combined %>%
+  st_as_sf(coords = c("longitude", "latitude"), crs = crs_nad83) %>%
+  st_join(carb_air_basins)
+  
+##### makes figure
+aqs_combined_sf %>%
+  ggplot() +
+    geom_smooth(aes(month_year, monthly_mean_pm2.5), alpha = 0.2) + 
+    labs(x = "Time", y = "Mean Monthly PM2.5 Concentration (µg/m^3)") + 
+    facet_wrap(~ NAME) +
+    theme_classic()
+```
+

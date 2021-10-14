@@ -1,0 +1,132 @@
+---
+title: "Memo: Monitor timing"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+source("../../code/0-setup/1-setup.R")
+```
+
+```{r data_input, include=FALSE}
+aqs_daily_annuli_exposure <-
+  readRDS("../../data/processed/aqs_daily_annuli_exposure.rds")
+```
+
+**Note:** Many of the monitors only have PM10 data; I omitted those, which brings the analytic dataset down to 882,911 monitor-day observations
+
+```{r include=FALSE}
+monitors_pm10_only <- aqs_daily_annuli_exposure %>% 
+  select(monitor_id, pm25_mean, co_max, no2_max, o3_max, vocs_total) %>%
+  drop_na()
+  # filter(is.na(pm25_mean) & 
+  #          is.na(co_max) & 
+  #          is.na(no2_max) &
+  #          is.na(o3_max) & 
+  #          is.na(so2_max) & 
+  #          is.na(vocs_total)) %>%
+  distinct(monitor_id)
+aqs_daily_annuli_exposure2 <- aqs_daily_annuli_exposure %>%
+  filter(monitor_id %!in% monitors_pm10_only$monitor_id)
+saveRDS(aqs_daily_annuli_exposure2, 
+        "../../data/processed/aqs_daily_annuli_exposure.rds")
+```
+
+```{r include=FALSE}
+monitors_dates <- aqs_daily_annuli_exposure %>%
+  group_by(monitor_id) %>%
+  summarize(monitor_start_date = min(date),
+            monitor_end_date   = max(date),
+            pm25 = mean(pm25_mean, na.rm = TRUE),
+            co   = mean(co_max, na.rm = TRUE),
+            no   = mean(no_max, na.rm = TRUE),
+            no2  = mean(no2_max, na.rm = TRUE),
+            o3   = mean(o3_max, na.rm = TRUE),
+            so2  = mean(so2_max, na.rm = TRUE),
+            vocs = mean(vocs_total, na.rm = TRUE),
+            preprod_count_0_to10km = sum(preprod_count_nowind_0to1km,
+                                         preprod_count_nowind_1to2km,
+                                         preprod_count_nowind_2to3km,
+                                         preprod_count_nowind_3to4km,
+                                         preprod_count_nowind_4to5km,
+                                         preprod_count_nowind_5to6km,
+                                         preprod_count_nowind_6to7km,
+                                         preprod_count_nowind_7to8km,
+                                         preprod_count_nowind_8to9km,
+                                         preprod_count_nowind_9to10km),
+            prod_volume_nowind_0to10km = sum(prod_volume_nowind_0to1km,
+                                             prod_volume_nowind_1to2km,
+                                             prod_volume_nowind_2to3km,
+                                             prod_volume_nowind_3to4km,
+                                             prod_volume_nowind_4to5km,
+                                             prod_volume_nowind_5to6km,
+                                             prod_volume_nowind_6to7km,
+                                             prod_volume_nowind_7to8km,
+                                             prod_volume_nowind_8to9km,
+                                             prod_volume_nowind_9to10km),
+            .groups = "keep") %>%
+  mutate(monitor_interval = interval(monitor_start_date, monitor_end_date)) %>%
+  mutate(monitor_duration_yrs = 
+           # converts seconds to years
+           round((as.numeric(monitor_interval) / 60 / 60 / 24 / 365.25),
+                 digits = 2))
+```
+
+# Plot. Monitor start date by year
+
+```{r echo=FALSE}
+monitors_dates %>%
+  group_by(year(monitor_start_date)) %>%
+  summarize(n_new_monitors = n()) %>%
+  rename(year = `year(monitor_start_date)`) %>%
+  ggplot() +
+  geom_bar(aes(year, n_new_monitors), stat = "identity") +
+  theme_classic()
+```
+
+
+```{r echo=FALSE}
+hist(monitors_dates$monitor_duration_yrs, breaks = 20)
+```
+
+#### Plot. 
+
+```{r echo=FALSE}
+monitors_dates %>%
+  ggplot() +
+  geom_bar(aes(monitor_start_date, monitor_duration_yrs), 
+           color = "black", stat = "identity") + 
+  theme_classic() +
+  theme(axis.line.x = element_blank()) +
+  ylim(0, 21) +
+  coord_flip()
+```
+
+#### Plot. Preprod well-days of exposure x Duration of monitoring
+
+```{r include=FALSE}
+monitors_dates %>%
+  ggplot() +
+  geom_point(aes(monitor_duration_yrs, preprod_count_0_to10km), alpha = 0.5) +
+  theme_classic()
+```
+
+
+#### Plot. Total prod vol exposure x Duration of monitoring
+
+```{r include=FALSE}
+monitors_dates %>%
+  ggplot() +
+  geom_point(aes(monitor_duration_yrs, prod_volume_nowind_0to10km),
+             alpha = 0.5) +
+  theme_classic()
+```
+
+
+```{r}
+aqs_daily_annuli_exposure2 %>%
+  left_join(monitors_dates, by = "monitor_id") %>%
+  filter(monitor_duration_yrs < 20) %>%
+  select(pm25_mean, co_max, no_max, no2_max, o3_max, vocs_total) %>%
+  summary()
+```
+

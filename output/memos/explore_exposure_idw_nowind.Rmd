@@ -1,0 +1,343 @@
+---
+title: "Ch. 3: Oil Production and Air Quality in California"
+subtitle: "Data Exploration: Exposure with inverse distance weighting"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+# sets up RStudio workspace
+  source("../../code/0-setup/01-setup.R")
+```
+
+```{r data_import, include=FALSE}
+# imports raw data
+  # California Air Resources Board (CARB) - administrative shapefiles
+  carb_air_basins_raw <-
+    st_read("../../data/raw/cal_epa/carb_air_basins/CaAirBasin.shp")
+  carb_air_districts_raw <-
+    st_read("../../data/raw/cal_epa/carb_air_districts/CaAirDistrict.shp")
+  # DrillingInfo - oil and gas well sites
+  di_wells_raw <-
+    read_csv("../../data/raw/drillinginfo/california_wells_jan2019.csv")
+  # US Census Bureau - administrative shapefiles
+  cal_counties_raw <- 
+    st_read("../../data/raw/us_census/admin_shp/cal_counties.shp")
+  us_states_raw <- 
+    st_read("../../data/raw/us_census/admin_shp/tl_2018_us_state.shp")
+  
+# imports interim data
+  aqs_exposure_preprod <- read_csv("../../data/interim/aqs_exposure_preprod.csv")
+  aqs_exposure_prod <- read_csv("../../data/interim/aqs_exposure_prod.csv")
+```
+
+```{r data_tidying, include=FALSE}
+# loads functions for tidying the data
+  source("../../code/2-tidying/02-tidy_drilling_data.R")
+    
+# calls functions to tidy all necessary datasets
+  di_wells <- prepDrillingData(di_wells_raw)
+
+# prepares datasets necessary for this notebook
+  
+  # US Census
+  cal_counties <- cal_counties_raw %>%
+    st_transform(crs_nad83)
+  us_states <- us_states_raw %>%
+    st_transform(crs_nad83)    
+
+  # sites of air quality monitors, sf object
+  aqs_sites <- aqs_exposure_preprod %>%
+    # keeps only each unique air monitor
+    distinct(site_id, .keep_all = TRUE) %>% 
+    # drops columns we don't need
+    select(-c(monthly_mean_co:monthly_mean_so2)) %>%
+    # converts to sf object
+    st_as_sf(coords = c("longitude", "latitude"), crs = crs_nad83)
+
+  # wells in preproduction stage during the study period, sf object
+  wells_preprod <- di_wells %>%
+    filter(drilled_1999_to_2019 == 1) %>%
+    st_as_sf(coords = c("longitude", "latitude"), crs = crs_nad83)
+    
+  # wells in production stage during the study period, sf object
+  wells_prod <- di_wells %>%
+    filter(prod_1999_to_2019 == 1) %>%
+    st_as_sf(coords = c("longitude", "latitude"), crs = crs_nad83)
+  
+  # makes 5 km buffer around well sites in preproduction stage
+  wells_preprod_buffer <- wells_preprod %>%
+    # transforms objected to projected CRS, necessary before making buffer
+    st_transform(crs_projected) %>%
+    # makes 5,000 m buffer
+    st_buffer(dist = 5000) %>%  # distance in meters
+    # merges overlapping polygons
+    st_union() 
+  
+  # makes 5 km buffer around well sites in production stage
+  wells_prod_buffer <- wells_prod %>%
+    # transforms objected to projected CRS, necessary before making buffer
+    st_transform(crs_projected) %>%
+    # makes 5,000 m buffer
+    st_buffer(dist = 5000) %>%  # distance in meters
+    # merges overlapping polygons
+    st_union() 
+```
+
+### Overview
+
+This Rmarkdown notebook explores exposure data for Ch. 3 of my dissertation project. This study uses air quality and drilling from 1999 to 2019 across California.
+
+#### Data sources
+
+- California Air Resources Board - administrative shapefiles
+- Enverus (formerly DrillingInfo) - well sites
+- US EPA Air Quality System (AQS) - monitoring sites, air pollutant concentrations
+- US Census Bureau - administrative shapefiles
+
+### Air Quality Monitors and Well Sites
+
+For this study, we used data from **`r nrow(aqs_sites)`** unique monitors from the AQS dataset. We obtained data on concentrations of **six air pollutants from 1999 to 2019: CO, O3, NO2, PM10, PM2.5, and SO2**. Note that not all monitors monitor all pollutants.
+
+We also used data on **`r di_wells %>% filter(drilled_1999_to_2019 == 1) %>% nrow()`** well sites in preproduction and **`r di_wells %>% filter(prod_1999_to_2019 == 1) %>% nrow()`** well sites in production in California during the study period (1999-2019). Note that these groups are not mutually exclusive. Well sites were most highly concentrated in the Central Valley and Southern California.
+
+Of the `r nrow(aqs_sites)` unique monitors, some **`r aqs_exposure_preprod %>% group_by(site_id) %>% summarize(idw_sum = sum(idw_index)) %>% filter(idw_sum > 0) %>% nrow()`** were exposed to well sites in preproduction and **`r aqs_exposure_prod %>% group_by(site_id) %>% summarize(idw_sum = sum(idw_index)) %>% filter(idw_sum > 0) %>% nrow()`** were exposed to well sites in production, with exposure defined as having *at least* one well within 10 km at any point during the study period, 1999-2019.
+
+The orange shaded area is a 5 km buffer around well sites in preproduction stage. The dark gray shaded area is a 5 km buffer around well sites in the production stage.
+
+```{r echo=FALSE}
+ggplot() +
+  geom_sf(data = cal_counties, fill = "#000000", color = NA, alpha = 0.2) +
+  geom_sf(data = wells_prod_buffer, fill = "#000000", alpha = 0.7) +
+  geom_sf(data = wells_preprod_buffer, fill = "#f1a340", alpha = 0.7) +
+  geom_sf(data = aqs_sites, shape = 2, alpha = 0.7) +
+  theme_bw()
+```
+
+**Table. AQS monitors by mean monthly exposure to well sites in preproduction throughout the study period. Arranged in descending order.**
+
+```{r echo=FALSE}
+aqs_exposure_preprod %>% 
+  group_by(site_id) %>% 
+  summarize(idw_mean = mean(idw_index)) %>%
+  mutate(idw_mean = round(idw_mean, digits = 1)) %>%
+  arrange(-idw_mean)
+```
+
+**Table. AQS monitors by mean monthly exposure to well sites in production throughout the study period. Arranged in descending order.**
+
+```{r echo=FALSE}
+aqs_exposure_prod %>% 
+  group_by(site_id) %>% 
+  summarize(idw_mean = mean(idw_index)) %>%
+  mutate(idw_mean = round(idw_mean, digits = 1)) %>%
+  arrange(-idw_mean)
+```
+
+More monitors were exposed to well sites in the production stage, and the exposure indices were substantially higher for monitors exposed to producing wells. This is likely due to the high density of producing wells and duration of production.
+
+## Well Sites in Preproduction
+
+The following plots explore data related to exposure of U.S. EPA AirNow monitoring sites to oil and gas drilling sites, 1999-2015.
+
+#### Distribution of exposure
+
+For this figure, observations without exposure, i.e., IDW index values of 0, were omitted (n = `r aqs_exposure_preprod %>% filter(idw_index == 0) %>% nrow()`)
+
+```{r echo=FALSE}
+aqs_exposure_preprod %>%
+  filter(idw_index > 0) %>%
+  ggplot() +
+    geom_histogram(aes(idw_index), bins = 50) +
+    xlim(-1, 50) +
+    labs(x = "IDW Index", y = "Count") +
+    theme_classic()
+```
+
+#### Exposure by month
+
+```{r}
+aqs_exposure_preprod %>% 
+  ggplot() +
+    geom_point(aes(month_year, idw_index), alpha = 0.4) +
+    labs(x = "Time", y = "IDW Index") + 
+    theme_bw()
+```
+
+### Pollutant x Exposure
+
+Scatterplots of IDW index x mean monthly concentration of the six pollutants of interest with a line of best fit.
+
+#### CO Concentration by Exposure
+
+```{r echo=FALSE, warning=FALSE}
+aqs_exposure_preprod %>% 
+  ggplot(aes(idw_index, monthly_mean_co)) +
+    geom_point(alpha = 0.5) +
+    stat_smooth(method = "lm", col = "red") +
+    xlim(0, 50) +
+    labs(x = "IDW Index", y = "Mean Monthly CO Concentration") + 
+    theme_bw()
+```
+
+#### O3 Concentration by Exposure
+
+```{r echo=FALSE, warning=FALSE}
+aqs_exposure_preprod %>% 
+  ggplot(aes(idw_index, monthly_mean_ozone)) +
+    geom_point(alpha = 0.5) +
+    stat_smooth(method = "lm", col = "red") +
+    xlim(0, 50) +
+    labs(x = "IDW Index", y = "Mean Monthly Ozone Concentration") + 
+    theme_bw()
+```
+
+#### NO2 Concentration by Exposure
+
+```{r echo=FALSE, warning=FALSE}
+aqs_exposure_preprod %>% 
+  ggplot(aes(idw_index, monthly_mean_no2)) +
+    geom_point(alpha = 0.5) +
+    stat_smooth(method = "lm", col = "red") +
+    xlim(0, 50) +
+    labs(x = "IDW Index", y = "Mean Monthly NO2 Concentration") + 
+    theme_bw()
+```
+
+#### PM10 Concentration by Exposure
+
+```{r echo=FALSE, warning=FALSE}
+aqs_exposure_preprod %>% 
+  ggplot(aes(idw_index, monthly_mean_pm10)) +
+    geom_point(alpha = 0.5) +
+    stat_smooth(method = "lm", col = "red") +
+    xlim(0, 50) +
+    labs(x = "IDW Index", y = "Mean Monthly PM10 Concentration") + 
+    theme_bw()
+```
+
+#### PM2.5 Concentration by Exposure
+
+Note the x-axis limits; we did not have PM2.5 observations for IDW index values over 1.1
+
+```{r warning=FALSE}
+aqs_exposure_preprod %>% 
+  ggplot(aes(idw_index, monthly_mean_pm2.5)) +
+    geom_point(alpha = 0.5) +
+    stat_smooth(method = "lm", col = "red") +
+    xlim(0, 50) +
+    labs(x = "IDW Index", y = "Mean Monthly PM2.5 Concentration") + 
+    theme_bw()
+```
+
+#### SO2 Concentration by Exposure
+
+```{r echo=FALSE, warning=FALSE}
+aqs_exposure_preprod %>% 
+  ggplot(aes(idw_index, monthly_mean_so2)) +
+    geom_point(alpha = 0.5) +
+    stat_smooth(method = "lm", col = "red") +
+    xlim(0, 50) +
+    labs(x = "IDW Index", y = "Mean Monthly SO2 Concentration") + 
+    theme_bw()
+```
+
+## Well Sites in Production
+
+### Distribution of exposure
+
+```{r echo=FALSE}
+aqs_exposure_prod %>%
+  filter(idw_index > 0) %>%
+  ggplot() +
+    geom_histogram(aes(idw_index), bins = 50) +
+    labs(x = "IDW Index", y = "Count") +
+    xlim(-20, 1800) + 
+    theme_classic()
+```
+
+#### Exposure by month
+
+```{r echo=FALSE}
+aqs_exposure_prod %>% 
+  ggplot() +
+    geom_point(aes(month_year, idw_index), alpha = 0.5) +
+    labs(x = "Time", y = "IDW Index") +
+    theme_classic()
+```
+
+### Pollutant x Exposure
+
+#### CO Concentration by Exposure
+
+Note the x-axis limits; we did not have NO2 observations for IDW index values over 5.5
+
+```{r echo=FALSE, warning=FALSE}
+aqs_exposure_prod %>% 
+  ggplot(aes(idw_index, monthly_mean_co)) +
+    geom_point(alpha = 0.5) +
+    stat_smooth(method = "lm", col = "red") +
+    xlim(0, 1800) +
+    labs(x = "IDW Index", y = "Mean Monthly CO Concentration") + 
+    theme_bw()
+```
+
+#### NO2 Concentration by Exposure
+
+
+```{r echo=FALSE, warning=FALSE}
+aqs_exposure_prod %>% 
+  ggplot(aes(idw_index, monthly_mean_no2)) +
+    geom_point(alpha = 0.5) +
+    stat_smooth(method = "lm", col = "red") +
+    xlim(0, 1800) +
+    labs(x = "IDW Index", y = "Mean Monthly NO2 Concentration") + 
+    theme_bw()
+```
+
+#### O3 Concentration by Exposure
+
+```{r echo=FALSE, warning=FALSE}
+aqs_exposure_prod %>% 
+  ggplot(aes(idw_index, monthly_mean_ozone)) +
+    geom_point(alpha = 0.5) +
+    stat_smooth(method = "lm", col = "red") +
+    xlim(0, 1800) +
+    labs(x = "IDW Index", y = "Mean Monthly Ozone Concentration") + 
+    theme_bw()
+```
+
+#### PM10 Concentration by Exposure
+
+```{r echo=FALSE, warning=FALSE}
+aqs_exposure_prod %>% 
+  ggplot(aes(idw_index, monthly_mean_pm10)) +
+    geom_point(alpha = 0.5) +
+    stat_smooth(method = "lm", col = "red") +
+    xlim(0, 1800) +
+    labs(x = "IDW Index", y = "Mean Monthly PM10 Concentration") + 
+    theme_bw()
+```
+
+#### PM2.5 Concentration by Exposure
+
+```{r echo=FALSE, warning=FALSE}
+aqs_exposure_prod %>% 
+  ggplot(aes(idw_index, monthly_mean_pm2.5)) +
+    geom_point(alpha = 0.5) +
+    stat_smooth(method = "lm", col = "red") +
+    xlim(0, 1800) +
+    labs(x = "IDW Index", y = "Mean Monthly PM2.5 Concentration") + 
+    theme_bw()
+```
+
+#### SO2 Concentration by Exposure
+
+```{r echo=FALSE, warning=FALSE}
+aqs_exposure_prod %>% 
+  ggplot(aes(idw_index, monthly_mean_so2)) +
+    geom_point(alpha = 0.5) +
+    stat_smooth(method = "lm", col = "red") +
+    xlim(0, 1800) +
+    labs(x = "IDW Index", y = "Mean Monthly SO2 Concentration") + 
+    theme_bw()
+```

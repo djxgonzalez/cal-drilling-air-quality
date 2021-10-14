@@ -1,0 +1,168 @@
+---
+title: "Data Exploration: CalGEM Production"
+output: html_notebook
+---
+
+
+```{r setup_input_tidy, include=FALSE}
+# sets up R environment
+source("../../code/0-setup/1-setup.R")
+
+# inputs data
+calgem_production_monthly <- 
+  readRDS("../../data/interim/calgem_production_monthly.rds")
+wells_interim <- readRDS("../../data/interim/wells_interim.rds")
+
+calgem_production_wells_sf <- calgem_production_monthly %>%
+  distinct(pwt_id) %>%
+  st_as_sf() ##### pick up here, considering making summary statistics grouping by pwt_id
+```
+
+
+## Descriptive statistics
+
+- The dataset includes observations from `r calgem_production_monthly %>% distinct(pwt_id) %>% nrow()` wells, 1999-2017
+- `r calgem_production_monthly %>% filter(oil_produced >= 0 | gas_produced >= 0) %>% nrow()` observations include an observation for oil or gas production, and `r  calgem_production_monthly %>% filter(oil_produced > 0 | gas_produced > 0) %>% nrow()` of those had production > 0 barrels
+
+### Missingness
+
+- Of the `r calgem_production_monthly %>% filter(oil_produced > 0 | gas_produced > 0) %>% nrow()` well-months with oil/gas production, in the dataset, **`r calgem_production_monthly %>% filter(oil_produced > 0 | gas_produced > 0) %>% filter(is.na(longitude)) %>% nrow()` (3.1%) are missing lat/long data**
+- Volume of oil/gas with missing lat/long data
+- This isn't ideal, but I think we're okay to move forward with these data! Particulary for 2001-2013 (see plots below)
+
+#### Plot. Missingness by month, lat/long, all well-months
+
+```{r echo=FALSE, warning=FALSE}
+calgem_production_monthly %>%
+  filter(is.na(longitude)) %>%
+  group_by(prod_month_year) %>%
+  summarize(n = n()) %>%
+  ggplot() + 
+  geom_bar(aes(prod_month_year, n), stat = "identity") +
+  theme_classic()
+```
+
+#### Plot. Missingness by month, lat/long, well-months with production
+
+```{r echo=FALSE, warning=FALSE}
+calgem_production_monthly %>%
+  filter(oil_produced > 0 | gas_produced > 0) %>%
+  filter(is.na(longitude)) %>%
+  group_by(prod_month_year) %>%
+  summarize(n = n()) %>%
+  ggplot() + 
+  geom_bar(aes(prod_month_year, n), stat = "identity") +
+  theme_classic()
+```
+
+**Most missingness for producing well-months is before 2001 and after 2013; do a sensitivity analysis for 2001-2013**
+
+#### Plot. Volume of oil with mising lat/long, well-months with production
+
+```{r echo=FALSE, warning=FALSE}
+calgem_production_monthly %>%
+  filter(oil_produced > 0) %>%
+  filter(is.na(longitude)) %>%
+  group_by(prod_month_year) %>%
+  summarize(oil_production = sum(oil_produced)) %>%
+  ggplot() + 
+  geom_bar(aes(prod_month_year, oil_production), stat = "identity") +
+  theme_classic()
+```
+
+#### Plot. Volume of oil with mising lat/long by year
+
+```{r echo=FALSE, warning=FALSE}
+calgem_production_monthly %>%
+  mutate(year = as.factor(year(prod_month_year))) %>%
+  filter(oil_produced > 0) %>%
+  filter(is.na(longitude)) %>%
+  group_by(year) %>%
+  summarize(oil_production = sum(oil_produced)) %>%
+  ggplot() + 
+  geom_bar(aes(year, oil_production), stat = "identity") +
+  theme_classic()
+```
+
+
+#### Plot. Volume of gas with mising lat/long, well-months with production
+
+```{r echo=FALSE, warning=FALSE}
+calgem_production_monthly %>%
+  filter(gas_produced > 0) %>%
+  filter(is.na(longitude)) %>%
+  group_by(prod_month_year) %>%
+  summarize(gas_production = sum(gas_produced)) %>%
+  ggplot() + 
+  geom_bar(aes(prod_month_year, gas_production), stat = "identity") +
+  theme_classic()
+```
+
+#### Plot. Volume of gas with mising lat/long by year
+
+```{r echo=FALSE, warning=FALSE}
+calgem_production_monthly %>%
+  mutate(year = as.factor(year(prod_month_year))) %>%
+  filter(gas_produced > 0) %>%
+  filter(is.na(longitude)) %>%
+  group_by(year) %>%
+  summarize(gas_production = sum(gas_produced)) %>%
+  ggplot() + 
+  geom_bar(aes(year, gas_production), stat = "identity") +
+  theme_classic()
+```
+
+## Temporal variation
+
+#### Plot. Well count through time
+
+```{r echo=FALSE}
+calgem_production_monthly %>% 
+  group_by(prod_month_year) %>%
+  summarize(observations = n()) %>%
+  ggplot() +
+  geom_bar(aes(prod_month_year, observations), stat = "identity") +
+  theme_classic()
+```
+
+
+#### Plot. Monthly oil production, total, 1999-2019
+
+```{r echo=FALSE}
+calgem_production_monthly %>%
+  #filter(prod_month_year < as.Date("2001-01-01", format = "%Y-%m-%d")) %>%
+  group_by(prod_month_year) %>%
+  summarize(sum_oil_produced = sum(oil_produced, na.rm = TRUE)) %>%
+  ggplot() +
+    geom_line(aes(prod_month_year, sum_oil_produced)) + 
+    labs(x = "Time", y = "Sum Oil Produced (barrels)") + 
+    theme_classic()
+```
+
+#### Plot. Monthly gas production, total, 1999-2019
+
+```{r echo=FALSE}
+calgem_production_monthly %>%
+  group_by(prod_month_year) %>%
+  summarize(sum_gas_produced = sum(gas_produced, na.rm = TRUE)) %>%
+  ggplot() +
+    geom_line(aes(prod_month_year, sum_gas_produced)) + 
+    labs(x = "Time", y = "Sum Gas Produced (BTW)") + 
+    theme_classic()
+```
+
+#### Plot. Total monthly water production, 1999-2019
+
+```{r echo=FALSE}
+calgem_production_monthly %>%
+  group_by(prod_month_year) %>%
+  summarize(sum_water_produced = sum(water_produced, na.rm = TRUE)) %>%
+  ggplot() +
+    geom_line(aes(prod_month_year, sum_water_produced)) + 
+    labs(x = "Time", y = "Sum Water Produced (units?)") + 
+    theme_classic()
+```
+
+```{r}
+
+```

@@ -1,0 +1,240 @@
+---
+title: "Memo - Examining SO2 time series data"
+output: html_notebook
+date: "2/3/2021"
+---
+
+```{r setup, include=FALSE}
+source("../../code/0-setup/1-setup.R")
+library("patchwork")
+```
+
+```{r data_input, include=FALSE}
+aqs_sites <- readRDS("../../data/interim/aqs_sites.rds")
+aqs_daily_annuli_preproduction <- 
+  readRDS("../../data/processed/aqs_daily_annuli_preproduction.rds")
+```
+
+```{r data_tidying, include=FALSE}
+data_so2 <- aqs_daily_annuli_preproduction %>% 
+  filter(so2_max >= 0) %>%
+  # need to drop NAs here to add residuals below
+  drop_na(so2_max, narr_precip, narr_temp, narr_wind_speed, day_of_week,
+          carb_basin, month, year, monitor_id)
+model_fit <- felm(so2_max ~ 
+                    narr_precip + 
+                    narr_temp +
+                    narr_wind_speed
+                  | day_of_week + 
+                    factor(carb_basin):factor(month) +
+                    factor(carb_basin):factor(year),
+                  data = data_so2)
+data_so2$residuals = as.numeric(residuals(model_fit))
+
+model_fit <- felm(so2_max ~ 
+                    narr_precip + 
+                    narr_temp +
+                    narr_wind_speed
+                  | day_of_week + 
+                    factor(monitor_id):factor(month) +
+                    factor(carb_basin):factor(year),
+                  data = data_so2)
+data_so2$residuals2 = as.numeric(residuals(model_fit))
+
+model_fit <- felm(so2_max ~ 
+                    narr_precip + 
+                    narr_temp +
+                    narr_wind_speed
+                  | day_of_week + 
+                    factor(monitor_id):factor(month) +
+                    factor(monitor_id):factor(year),
+                  data = data_so2)
+data_so2$residuals3 = as.numeric(residuals(model_fit))
+```
+
+## Objectives
+
+In the analyses to date, the result for SO2 is a bit unclaer. We see an increase with exposure to both upwind and downwind wells within 1 km. In this memo, I examine the raw observations, exposure metrics, and residuals.
+
+
+## Analysis
+
+#### Table. Descriptive statitistics for PM25 monitors within 1 km of drilling sites
+
+```{r echo=FALSE}
+data_so2 %>%
+  filter(preprod_count_uw_0to1km > 0 | preprod_count_dw_0to1km > 0) %>%
+  distinct(monitor_id, .keep_all = TRUE) %>%
+  select(monitor_id, carb_basin, county, is_urban)
+```
+
+Data for exposed monitor-days (within 1 km of a preproduction well, where we see the effect) with SO2 observations comes from just one monitor in Santa Barbara (though there are more monitors exposed to production volume).
+
+
+#### Plot. Exposure by year
+
+
+```{r echo=FALSE}
+data_so2 %>%
+  ggplot() +
+  geom_bar(aes(year, preprod_count_uw_0to1km), stat = "identity") +
+  theme_classic() +
+  theme(legend.position = "none")
+```
+
+Exposure at the monitor is confined to 2011-12.
+
+#### Plot. Correlation between upwind and downwind exposure
+
+```{r echo=FALSE}
+data_so2 %>%
+  filter(monitor_id %in% exposed_monitors$monitor_id) %>%
+  ggplot(aes(preprod_count_uw_0to1km, preprod_count_dw_0to1km)) +
+  geom_jitter(aes(color = monitor_id), alpha = 0.1) +
+  theme_classic() +
+  theme(legend.position = "none")
+```
+
+No apparent correlation between exposure to upwind and downwind wells (these are likely the same wells)
+
+
+#### Plot. Residuals x upwind exposure, exposed monitors only
+
+Residuals from adjust linear regression model with meteorological and day-of-week controls with FE for basin-month and basin-year.
+
+```{r echo=FALSE}
+data_so2 %>%
+  filter(monitor_id == "060831013") %>%
+  ggplot(aes(preprod_count_uw_0to1km, residuals)) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_smooth(method = "lm", formula = y ~ x) +
+  geom_point(aes(color = monitor_id), alpha = 0.1) +
+  theme_classic()
+```
+
+This is our primary positive result for SO2
+
+
+#### Plot. Residuals x downwind placebo "exposure," exposed monitor only
+
+Residuals from adjust linear regression model with meteorological and day-of-week controls with FE for basin-month and basin-year.
+
+```{r echo=FALSE}
+data_so2 %>%
+  filter(monitor_id == "060831013") %>%
+  ggplot(aes(preprod_count_dw_0to1km, residuals)) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_point(aes(color = monitor_id), alpha = 0.1) +
+  geom_smooth(method = "lm", formula = y ~ x) +
+  theme_classic()
+```
+
+A positive result, similar to the result for upwind wells
+
+
+#### Plot. Residuals x upwind exposure, all monitors
+
+```{r echo=FALSE}
+data_so2 %>%
+  ggplot(aes(preprod_count_uw_0to1km, residuals)) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_point(alpha = 0.1) +
+  geom_smooth(method = "lm", formula = y ~ x) +
+  theme_classic()
+```
+
+
+#### Plot. Time series of SO2 at monitor 060831013 (Samta Barbara County)
+
+```{r include=FALSE}
+panel_a <- data_so2 %>%
+  filter(monitor_id == "060831013") %>%
+  filter(year %in% c(2011:2012)) %>%
+  ggplot(aes(date, so2_max)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "loess", formula = y ~ x) +
+  labs(x = "", y = "SO2 (ppb)") +
+  theme_classic() +
+  theme(axis.line.x  = element_blank(),  # removes x-axis
+        axis.ticks.x = element_blank(),
+        axis.text.x  = element_blank())
+```
+
+```{r include=FALSE}
+panel_b <- data_so2 %>%
+  filter(monitor_id == "060831013") %>%
+  filter(year %in% c(2011:2012)) %>%
+  ggplot() +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_point(aes(date, residuals), alpha = 0.5) +
+  theme_classic() +
+  labs(x = "", y = "SO2 Residuals") +
+  theme(axis.line.x  = element_blank(),  # removes x-axis
+        axis.ticks.x = element_blank(),
+        axis.text.x  = element_blank())
+```
+
+
+```{r include=FALSE}
+panel_c <- data_so2 %>%
+  filter(monitor_id == "060831013") %>%
+  filter(year %in% c(2011:2012)) %>%
+  ggplot() +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_point(aes(date, residuals2), alpha = 0.5) +
+  theme_classic() +
+  labs(x = "", y = "SO2 Residuals") +
+  theme(axis.line.x  = element_blank(),  # removes x-axis
+        axis.ticks.x = element_blank(),
+        axis.text.x  = element_blank())
+```
+
+
+```{r include=FALSE}
+panel_d <- data_so2 %>%
+  filter(monitor_id == "060831013") %>%
+  filter(year %in% c(2011:2012)) %>%
+  ggplot() +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_point(aes(date, residuals3), alpha = 0.5) +
+  theme_classic() +
+  labs(x = "", y = "SO2 Residuals") +
+  theme(axis.line.x  = element_blank(),  # removes x-axis
+        axis.ticks.x = element_blank(),
+        axis.text.x  = element_blank())
+```
+
+```{r include=FALSE}
+panel_e <- data_so2 %>%
+  filter(monitor_id == "060831013") %>%
+  filter(year %in% c(2011:2012)) %>%
+  ggplot() +
+  geom_bar(aes(date, preprod_count_uw_0to1km), stat = "identity") +
+  scale_y_continuous(breaks = 1) +
+  labs(x = "", y = "n upwind wells") +
+  theme_classic() +
+  theme(axis.line.x  = element_blank(),  # removes x-axis
+        axis.ticks.x = element_blank(),
+        axis.text.x  = element_blank())
+```
+
+```{r include=FALSE}
+panel_f <- data_so2 %>%
+  filter(monitor_id == "060831013") %>%
+  filter(year %in% c(2011:2012)) %>%
+  ggplot() +
+  geom_bar(aes(date, preprod_count_dw_0to1km), stat = "identity") +
+  scale_y_continuous(breaks = 1) +
+  labs(x = "Date", y = "n downwind wells") +
+  theme_classic()
+```
+
+```{r echo=FALSE, warning=FALSE}
+figure <- panel_a / panel_b / panel_c / panel_d / panel_e / panel_f
+figure
+ggsave(filename = "time_series_monitor_060831013_so2_a.png",
+       plot = figure, device = "png", height = 8.5, width = 6,
+       path = "../../output/figures/supplemental/")
+```
+
+We have time series data for 1999-2019; for this figure, we focus on 2011-12. Puzzlingly, the SO2 measurements seem to only be 1 or 2 (with a few outliers). This is a red flag. I get the sense that there may be an error in the SO2 data; if these are the correct data, then I don't think we can make a case for any association for SO2

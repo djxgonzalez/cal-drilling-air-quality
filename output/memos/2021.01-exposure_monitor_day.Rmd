@@ -1,0 +1,255 @@
+---
+title: "Memo - Distribution of exposure by monitor-day"
+output: html_notebook
+date: "01-27-2021"
+---
+
+
+```{r setup, include=FALSE}
+source("../../code/0-setup/1-setup.R")
+library("lfe")
+```
+
+```{r data_input, include=FALSE}
+aqs_sites <- readRDS("../../data/interim/aqs_sites.rds") %>%
+  st_as_sf(coords = c("longitude", "latitude"), crs = crs_nad83)
+aqs_daily_annuli_preproduction <- 
+  readRDS("../../data/processed/aqs_daily_annuli_preproduction.rds")
+#### add production exposure data
+```
+
+
+## Objectives
+
+This memo explore the distribution of exposure in monitor-days, i.e., the number of monitor-day observations with exposure to > 0 preproduction wells and/or > 0 production volume in each of the the 1-km annuli.
+
+
+## Visualizations
+
+### Preproduction well count
+
+#### Plot. Monitor-days with exposure to at least one well by annulus, all monitors
+
+```{r echo=FALSE}
+data_plot <- tibble(
+  distance_km = c("0-1", "1-2", "2-3", "3-4", "4-5",
+                  "5-6", "6-7", "7-8", "8-9", "9-10",
+                  "0-1", "1-2", "2-3", "3-4", "4-5",
+                  "5-6", "6-7", "7-8", "8-9", "9-10"),
+  wind_direction = c("upwind", "upwind", "upwind", "upwind", "upwind",
+                     "upwind", "upwind", "upwind", "upwind", "upwind",
+                     "downwind", "downwind", "downwind", "downwind", "downwind", 
+                     "downwind", "downwind", "downwind", "downwind", "downwind"),
+  # count of observations in monitor-days
+  n_observations = c(nrow(subset(aqs_daily_annuli_preproduction, # upwind
+                                 preprod_count_uw_0to1km > 0)),
+                     nrow(subset(aqs_daily_annuli_preproduction,
+                                 preprod_count_uw_1to2km > 0)),
+                     nrow(subset(aqs_daily_annuli_preproduction,
+                                 preprod_count_uw_2to3km > 0)),
+                     nrow(subset(aqs_daily_annuli_preproduction,
+                                 preprod_count_uw_3to4km > 0)),
+                     nrow(subset(aqs_daily_annuli_preproduction,
+                                 preprod_count_uw_4to5km > 0)),
+                     nrow(subset(aqs_daily_annuli_preproduction,
+                                 preprod_count_uw_5to6km > 0)),
+                     nrow(subset(aqs_daily_annuli_preproduction,
+                                 preprod_count_uw_6to7km > 0)),
+                     nrow(subset(aqs_daily_annuli_preproduction,
+                                 preprod_count_uw_7to8km > 0)),
+                     nrow(subset(aqs_daily_annuli_preproduction,
+                                 preprod_count_uw_8to9km > 0)),
+                     nrow(subset(aqs_daily_annuli_preproduction,
+                                 preprod_count_uw_9to10km > 0)),
+                     nrow(subset(aqs_daily_annuli_preproduction, # downwind
+                                 preprod_count_dw_0to1km > 0)),
+                     nrow(subset(aqs_daily_annuli_preproduction,
+                                 preprod_count_dw_1to2km > 0)),
+                     nrow(subset(aqs_daily_annuli_preproduction,
+                                 preprod_count_dw_2to3km > 0)),
+                     nrow(subset(aqs_daily_annuli_preproduction,
+                                 preprod_count_dw_3to4km > 0)),
+                     nrow(subset(aqs_daily_annuli_preproduction,
+                                 preprod_count_dw_4to5km > 0)),
+                     nrow(subset(aqs_daily_annuli_preproduction,
+                                 preprod_count_dw_5to6km > 0)),
+                     nrow(subset(aqs_daily_annuli_preproduction,
+                                 preprod_count_dw_6to7km > 0)),
+                     nrow(subset(aqs_daily_annuli_preproduction,
+                                 preprod_count_dw_7to8km > 0)),
+                     nrow(subset(aqs_daily_annuli_preproduction,
+                                 preprod_count_dw_8to9km > 0)),
+                     nrow(subset(aqs_daily_annuli_preproduction,
+                                 preprod_count_dw_9to10km > 0)))
+)
+```
+
+```{r echo=FALSE}
+data_plot %>%
+  ggplot() +
+  geom_bar(aes(distance_km, n_observations), stat = "identity") +
+  theme_classic() +
+  facet_wrap(. ~ wind_direction)
+```
+
+*Note:* Observations are in monitor-days
+
+
+#### Plot. Sum of preproduction wells observed by annulus, all monitors
+
+```{r echo=FALSE}
+data_plot <- tibble(
+  distance_km = c("0-1", "1-2", "2-3", "3-4", "4-5",
+                  "5-6", "6-7", "7-8", "8-9", "9-10",
+                  "0-1", "1-2", "2-3", "3-4", "4-5",
+                  "5-6", "6-7", "7-8", "8-9", "9-10"),
+  wind_direction = c("upwind", "upwind", "upwind", "upwind", "upwind",
+                     "upwind", "upwind", "upwind", "upwind", "upwind",
+                     "downwind", "downwind", "downwind", "downwind", "downwind", 
+                     "downwind", "downwind", "downwind", "downwind", "downwind"),
+  # count of observations in monitor-days
+  total_wells = c(sum(aqs_daily_annuli_preproduction$preprod_count_uw_0to1km),
+                  sum(aqs_daily_annuli_preproduction$preprod_count_uw_1to2km),
+                  sum(aqs_daily_annuli_preproduction$preprod_count_uw_2to3km),
+                  sum(aqs_daily_annuli_preproduction$preprod_count_uw_3to4km),
+                  sum(aqs_daily_annuli_preproduction$preprod_count_uw_4to5km),
+                  sum(aqs_daily_annuli_preproduction$preprod_count_uw_5to6km),
+                  sum(aqs_daily_annuli_preproduction$preprod_count_uw_6to7km),
+                  sum(aqs_daily_annuli_preproduction$preprod_count_uw_7to8km),
+                  sum(aqs_daily_annuli_preproduction$preprod_count_uw_8to9km),
+                  sum(aqs_daily_annuli_preproduction$preprod_count_uw_9to10km),
+                  sum(aqs_daily_annuli_preproduction$preprod_count_dw_0to1km),
+                  sum(aqs_daily_annuli_preproduction$preprod_count_dw_1to2km),
+                  sum(aqs_daily_annuli_preproduction$preprod_count_dw_2to3km),
+                  sum(aqs_daily_annuli_preproduction$preprod_count_dw_3to4km),
+                  sum(aqs_daily_annuli_preproduction$preprod_count_dw_4to5km),
+                  sum(aqs_daily_annuli_preproduction$preprod_count_dw_5to6km),
+                  sum(aqs_daily_annuli_preproduction$preprod_count_dw_6to7km),
+                  sum(aqs_daily_annuli_preproduction$preprod_count_dw_7to8km),
+                  sum(aqs_daily_annuli_preproduction$preprod_count_dw_8to9km),
+                  sum(aqs_daily_annuli_preproduction$preprod_count_dw_9to10km))
+)
+```
+
+```{r echo=FALSE}
+data_plot %>%
+  ggplot() +
+  geom_bar(aes(distance_km, total_wells), stat = "identity") +
+  theme_classic() +
+  facet_wrap(. ~ wind_direction)
+```
+
+
+### Prodution volume sum
+
+#### Plot. Monitor-days with exposure to at least one BOE by annulus, all monitors
+
+```{r echo=FALSE}
+data_plot <- tibble(
+  distance_km = c("0-1", "1-2", "2-3", "3-4", "4-5",
+                  "5-6", "6-7", "7-8", "8-9", "9-10",
+                  "0-1", "1-2", "2-3", "3-4", "4-5",
+                  "5-6", "6-7", "7-8", "8-9", "9-10"),
+  wind_direction = c("upwind", "upwind", "upwind", "upwind", "upwind",
+                     "upwind", "upwind", "upwind", "upwind", "upwind",
+                     "downwind", "downwind", "downwind", "downwind", "downwind", 
+                     "downwind", "downwind", "downwind", "downwind", "downwind"),
+  # count of observations in monitor-days
+  n_observations = c(nrow(subset(aqs_daily_annuli_production, # upwind
+                                 prod_volume_upwind_0to1km > 0)),
+                     nrow(subset(aqs_daily_annuli_production,
+                                 prod_volume_upwind_1to2km > 0)),
+                     nrow(subset(aqs_daily_annuli_production,
+                                 prod_volume_upwind_2to3km > 0)),
+                     nrow(subset(aqs_daily_annuli_production,
+                                 prod_volume_upwind_3to4km > 0)),
+                     nrow(subset(aqs_daily_annuli_production,
+                                 prod_volume_upwind_4to5km > 0)),
+                     nrow(subset(aqs_daily_annuli_production,
+                                 prod_volume_upwind_5to6km > 0)),
+                     nrow(subset(aqs_daily_annuli_production,
+                                 prod_volume_upwind_6to7km > 0)),
+                     nrow(subset(aqs_daily_annuli_production,
+                                 prod_volume_upwind_7to8km > 0)),
+                     nrow(subset(aqs_daily_annuli_production,
+                                 prod_volume_upwind_8to9km > 0)),
+                     nrow(subset(aqs_daily_annuli_production,
+                                 prod_volume_upwind_9to10km > 0)),
+                     nrow(subset(aqs_daily_annuli_production, # downwind
+                                 prod_volume_downwind_0to1km > 0)),
+                     nrow(subset(aqs_daily_annuli_production,
+                                 prod_volume_downwind_1to2km > 0)),
+                     nrow(subset(aqs_daily_annuli_production,
+                                 prod_volume_downwind_2to3km > 0)),
+                     nrow(subset(aqs_daily_annuli_production,
+                                 prod_volume_downwind_3to4km > 0)),
+                     nrow(subset(aqs_daily_annuli_production,
+                                 prod_volume_downwind_4to5km > 0)),
+                     nrow(subset(aqs_daily_annuli_production,
+                                 prod_volume_downwind_5to6km > 0)),
+                     nrow(subset(aqs_daily_annuli_production,
+                                 prod_volume_downwind_6to7km > 0)),
+                     nrow(subset(aqs_daily_annuli_production,
+                                 prod_volume_downwind_7to8km > 0)),
+                     nrow(subset(aqs_daily_annuli_production,
+                                 prod_volume_downwind_8to9km > 0)),
+                     nrow(subset(aqs_daily_annuli_production,
+                                 prod_volume_downwind_9to10km > 0)))
+)
+```
+
+```{r echo=FALSE}
+data_plot %>%
+  ggplot() +
+  geom_bar(aes(distance_km, n_observations), stat = "identity") +
+  theme_classic() +
+  facet_wrap(. ~ wind_direction)
+```
+
+
+#### Plot. Total production volume observed by annulus, all monitors
+
+```{r echo=FALSE}
+data_plot <- tibble(
+  distance_km = c("0-1", "1-2", "2-3", "3-4", "4-5",
+                  "5-6", "6-7", "7-8", "8-9", "9-10",
+                  "0-1", "1-2", "2-3", "3-4", "4-5",
+                  "5-6", "6-7", "7-8", "8-9", "9-10"),
+  wind_direction = c("upwind", "upwind", "upwind", "upwind", "upwind",
+                     "upwind", "upwind", "upwind", "upwind", "upwind",
+                     "downwind", "downwind", "downwind", "downwind", "downwind", 
+                     "downwind", "downwind", "downwind", "downwind", "downwind"),
+  # count of observations in monitor-days
+  total_production = c(sum(aqs_daily_annuli_production$prod_volume_upwind_0to1km),
+                       sum(aqs_daily_annuli_production$prod_volume_upwind_1to2km),
+                       sum(aqs_daily_annuli_production$prod_volume_upwind_2to3km),
+                       sum(aqs_daily_annuli_production$prod_volume_upwind_3to4km),
+                       sum(aqs_daily_annuli_production$prod_volume_upwind_4to5km),
+                       sum(aqs_daily_annuli_production$prod_volume_upwind_5to6km),
+                       sum(aqs_daily_annuli_production$prod_volume_upwind_6to7km),
+                       sum(aqs_daily_annuli_production$prod_volume_upwind_7to8km),
+                       sum(aqs_daily_annuli_production$prod_volume_upwind_8to9km),
+                       sum(aqs_daily_annuli_production$prod_volume_upwind_9to10km),
+                       sum(aqs_daily_annuli_production$prod_volume_downwind_0to1km),
+                       sum(aqs_daily_annuli_production$prod_volume_downwind_1to2km),
+                       sum(aqs_daily_annuli_production$prod_volume_downwind_2to3km),
+                       sum(aqs_daily_annuli_production$prod_volume_downwind_3to4km),
+                       sum(aqs_daily_annuli_production$prod_volume_downwind_4to5km),
+                       sum(aqs_daily_annuli_production$prod_volume_downwind_5to6km),
+                       sum(aqs_daily_annuli_production$prod_volume_downwind_6to7km),
+                       sum(aqs_daily_annuli_production$prod_volume_downwind_7to8km),
+                       sum(aqs_daily_annuli_production$prod_volume_downwind_8to9km),
+                       sum(aqs_daily_annuli_production$prod_volume_downwind_9to10km))
+)
+```
+
+```{r echo=FALSE}
+data_plot %>%
+  ggplot() +
+  geom_bar(aes(distance_km, total_production), stat = "identity") +
+  theme_classic() +
+  facet_wrap(. ~ wind_direction)
+`````
+
+
+## Summary

@@ -1,0 +1,12 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+source("../../code/0-setup/1-setup.R")
+
+births_exp_
+
+```
+

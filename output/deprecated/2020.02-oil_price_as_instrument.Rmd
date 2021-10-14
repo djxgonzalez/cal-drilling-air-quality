@@ -1,0 +1,229 @@
+---
+title: "Ch. 3"
+subtitle: "Oil price and production"
+output: html_notebook
+---
+
+```{r include=FALSE}
+oil_price <- read_csv("../../data/raw/us_eia/midway_sunset_oil_prices.csv")
+
+oil_price <- oil_price %>%
+  mutate(month_year = paste(price_month_year,  "01", sep = "-")) %>%
+  mutate(month_year = as.Date(month_year, format = "%y-%b-%d"))
+
+# joins oil price data with wells data
+wells_combined <- wells_combined %>%
+  mutate(month_year = prod_month_year) %>%
+  left_join(oil_price, by = "month_year")
+
+# joins oil price data with air quality data
+aqs_combined <- aqs_combined %>%
+  left_join(oil_price, by = "month_year")
+```
+
+#### Plot. Oil prices by month, Midway-Sunset Field, 2001-2019
+
+```{r echo=FALSE}
+oil_price %>%
+  drop_na(month_year) %>%
+  ggplot(aes(month_year, dollars_per_barrel)) +
+    geom_line() +
+    labs(x = "Year", y = "Price (dollars/barrel)") +
+    theme_classic()
+```
+
+#### Plot. Oil prices by month, Midway-Sunset Field, 2018-2019
+
+```{r echo=FALSE}
+oil_price %>%
+  filter(month_year >= as.Date("2018-01-01", format = "%Y-%m-%d")) %>%
+  drop_na(month_year) %>%
+  ggplot(aes(month_year, dollars_per_barrel)) +
+    geom_point() +
+    geom_line() +
+    labs(x = "Year", y = "Price (dollars/barrel)") +
+    theme_classic()
+```
+
+#### Plot. Oil prices and production by month, Kern County
+
+```{r echo=FALSE, warning=FALSE}
+wells_combined %>%
+  filter(county == "Kern") %>%
+  group_by(month_year) %>%
+  summarize(total_oil_produced_by_month = sum(oil_produced, na.rm = T)) %>%
+  left_join(oil_price, by = "month_year") %>% 
+  ggplot() + 
+    geom_line(aes(month_year, dollars_per_barrel,
+                  color = "Price")) +
+    geom_line(aes(month_year, total_oil_produced_by_month/100000,
+                  color = "Production")) +
+    scale_y_continuous(sec.axis = 
+                         sec_axis(~ .*5, 
+                                  name = "Oil Produced (barrels * 10^5)")) +
+    scale_colour_manual(values = c("blue", "red")) +
+    labs(x = "Time", y = "Oil Price (dollars/barrel)", color = "") +
+    theme_classic() +
+    theme(legend.position = c(0.8, 0.9))
+```
+
+#### Plot. Oil prices and production by month, not Kern
+
+```{r echo=FALSE}
+wells_combined %>%
+  filter(county %!in% "Kern") %>%
+  group_by(month_year) %>%
+  summarize(total_oil_produced_by_month = sum(oil_produced, na.rm = T)) %>%
+  left_join(oil_price, by = "month_year") %>% 
+  ggplot() + 
+    geom_line(aes(month_year, total_oil_produced_by_month/100000,
+                  color = "Production")) +
+    geom_line(aes(month_year, dollars_per_barrel,
+                  color = "Price")) +
+    scale_y_continuous(sec.axis = 
+                         sec_axis(~ .*5, 
+                                  name = "Oil Produced (barrels * 10^5)")) +
+    scale_colour_manual(values = c("blue", "red")) +
+    labs(x = "Time", y = "Oil Price (dollars/barrel)", color = "") +
+    theme_classic() +
+    theme(legend.position = c(0.8, 0.9))
+```
+
+#### Plot. Oil production and price (All Counties)
+
+```{r}
+wells_combined %>%
+  group_by(month_year) %>%
+  summarize(total_oil_produced_by_month = sum(oil_produced, na.rm = T)) %>%
+  left_join(oil_price, by = "month_year") %>% 
+  ggplot(aes(dollars_per_barrel, total_oil_produced_by_month)) + 
+    geom_point() +
+    geom_smooth(method = "lm") +
+    labs(x = "Oil Price (dollars/barrel)", y = "Oil Produced (barrels)") +
+    theme_classic()
+```
+
+#### Plot. Oil production and price (Kern)
+
+```{r}
+wells_combined %>%
+  filter(county == "Kern") %>%
+  group_by(month_year) %>%
+  summarize(total_oil_produced_by_month = sum(oil_produced, na.rm = T)) %>%
+  left_join(oil_price, by = "month_year") %>% 
+  ggplot(aes(dollars_per_barrel, total_oil_produced_by_month)) + 
+    geom_point() +
+    geom_smooth(method = "lm") +
+    labs(x = "Oil Price (dollars/barrel)", y = "Oil Produced (barrels)") +
+    theme_classic()
+```
+
+#### Plot. Oil production and price (Kern excluded)
+
+```{r}
+wells_combined %>%
+  filter(county %in% c("Ventura", "Los Angeles", "Monterey", "Fresno", 
+                       "Santa Barbara", "Orange", "San Luis Obispo", "Kings", 
+                       "Tulare")) %>%
+  group_by(month_year, county) %>%
+  summarize(total_oil_produced_by_month = sum(oil_produced, na.rm = T)) %>%
+  left_join(oil_price, by = "month_year") %>% 
+  ggplot(aes(dollars_per_barrel, total_oil_produced_by_month)) + 
+    geom_point() +
+    geom_smooth(method = "lm") +
+    facet_wrap(~ county) +
+    labs(x = "Oil Price (dollars/barrel)", y = "Oil Produced (barrels)") +
+    theme_classic()
+```
+
+#### Model.
+
+```{r echo=FALSE}
+model_data <- wells_combined %>% filter(oil_produced > 0)
+model_crude <- felm(oil_produced ~ dollars_per_barrel ,
+                  data = wells_combined)
+summary(model_crude)
+```
+
+
+```{r}
+model_fe1 <- felm(oil_produced ~ 
+                    dollars_per_barrel | as.factor(county),
+                  data = wells_combined)
+summary(model_fe1)
+```
+
+```{r}
+model_fe2 <- felm(oil_produced ~ 
+                    dollars_per_barrel | 
+                    #as.factor(month(month_year)) + 
+                    as.factor(year(month_year)),
+                  data = wells_combined)
+summary(model_fe2)
+```
+
+```{r}
+model_fe3 <- felm(oil_produced ~ 
+                    dollars_per_barrel | 
+                    #as.factor(month(month_year)) + 
+                    as.factor(year(month_year)) : as.factor(county),
+                  data = wells_combined)
+summary(model_fe3)
+```
+
+
+
+#### Plot. Oil price and [PM2.5] (Kern)
+
+```{r}
+aqs_combined %>%
+  filter(month_year >= as.Date("2018-01-01", format = "%Y-%m-%d")) %>%
+  group_by(month_year) %>%
+  summarize(monthly_pm2.5 = sum(monthly_mean_pm2.5, na.rm = T)) %>%
+  left_join(oil_price, by = "month_year") %>% 
+  ggplot(aes(dollars_per_barrel, monthly_pm2.5)) + 
+    geom_point() +
+    geom_smooth(method = "lm") +
+    labs(x = "Oil Price (dollars/barrel)", 
+         y = "Mean Monthly PM2.5 Conc. (µg/m^3)") +
+    theme_classic()
+```
+
+
+
+```{r echo=FALSE, warning=FALSE}
+wells_combined %>%
+  filter(county == "Kern") %>%
+  group_by(month_year) %>%
+  summarize(total_oil_produced_by_month = sum(oil_produced, na.rm = T)) %>%
+  full_join(oil_price, by = "month_year") %>% 
+  ggplot() + 
+    geom_line(aes(month_year, dollars_per_barrel,
+                  color = "Price")) +
+    geom_line(aes(month_year, total_oil_produced_by_month/100000,
+                  color = "Production")) +
+    scale_y_continuous(sec.axis = 
+                         sec_axis(~ .*5, 
+                                  name = "Oil Produced (barrels * 10^5)")) +
+    scale_colour_manual(values = c("blue", "red")) +
+    labs(x = "Time", y = "Oil Price (dollars/barrel)", color = "") +
+    theme_classic() +
+    theme(legend.position = c(0.15, 0.9))
+```
+
+
+```{r echo=FALSE}
+tib <- tibble(
+  model = c("a", "b", "c", "d"),
+  point = c(1.056, 1.135, 0.205, 0.188),
+  lower = c(0.988, 1.062, 0.135, 0.102),
+  upper = c(1.124, 1.208, 0.275, 0.274)  
+)
+
+tib %>%
+  ggplot() +
+    geom_pointrange(aes(x = model, y = point, ymin = lower, ymax = upper)) +
+    ylim(0, 1.5) +
+    theme_classic()
+```
+

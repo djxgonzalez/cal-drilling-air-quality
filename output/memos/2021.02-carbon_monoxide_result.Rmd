@@ -1,0 +1,545 @@
+---
+title: "Memo - "
+output: html_notebook
+date: "2/2/2021"
+---
+
+```{r setup, include=FALSE}
+source("../../code/0-setup/1-setup.R")
+library("patchwork")
+```
+
+```{r data_input, include=FALSE}
+aqs_sites <- readRDS("../../data/interim/aqs_sites.rds")
+aqs_daily_annuli_preproduction <- 
+  readRDS("../../data/processed/aqs_daily_annuli_preproduction.rds")
+#aqs_daily_annuli_production <-  # need to make and export this dataset
+#  readRDS("../../data/processed/aqs_daily_annuli_production.rds")
+```
+
+```{r data_tidying, include=FALSE}
+data_co <- aqs_daily_annuli_preproduction %>% 
+  filter(co_max >= 0) %>%
+  # need to drop NAs here to add residuals below
+  drop_na(co_max, narr_precip, narr_temp, narr_wind_speed, day_of_week,
+          carb_basin, month, year, monitor_id)
+model_fit <- felm(co_max ~ 
+                    narr_precip + 
+                    narr_temp +
+                    narr_wind_speed
+                  | day_of_week + 
+                    factor(carb_basin):factor(month) +
+                    factor(carb_basin):factor(year),
+                  data = data_co)
+data_co$residuals = as.numeric(residuals(model_fit))
+
+exposed_monitors <- data_co %>%
+  filter(preprod_count_uw_1to2km > 0 | preprod_count_uw_2to3km > 0 | 
+           preprod_count_dw_1to2km > 0 | preprod_count_dw_2to3km > 0) %>%
+  distinct(monitor_id, .keep_all = TRUE) %>%
+  select(monitor_id)
+```
+
+## Objectives
+
+In the analyses to date, the result for carbon monoxide is confusing; we see a significant decrease in CO concentrations with an additonal well within 2 km both upwind and downwind from monitors. In this memo, I examine where this result came from and visualize the data.
+
+
+## Analysis
+
+#### Table. Descriptive statitistics for CO monitors within 2 km of drilling sites
+
+```{r echo=FALSE}
+data_co %>%
+  filter(preprod_count_uw_1to2km > 0 |# preprod_count_uw_2to3km > 0 | 
+           preprod_count_dw_1to2km > 0) %>%# | preprod_count_dw_2to3km > 0) %>%
+  distinct(monitor_id, .keep_all = TRUE) %>%
+  select(monitor_id, carb_basin, county, is_urban)
+```
+
+Data for exposed monitor-days (within 3 km) with CO observations come from seven monitors, all of which are urban and most of which are located in southern California.
+
+
+#### Plot. Exposure by year
+
+```{r echo=FALSE}
+data_co %>%
+  mutate(preprod_count_uw_0to3km = (preprod_count_uw_0to1km +
+                                      preprod_count_uw_1to2km +
+                                      preprod_count_uw_2to3km)) %>%
+  ggplot() +
+  geom_bar(aes(year, preprod_count_uw_0to3km), stat = "identity") +
+  theme_classic()
+```
+
+There is a wide distribution of exposure throughout the study period
+
+#### Plot. Correlation between upwind and downwind exposure among exposed monitors
+
+```{r echo=FALSE}
+data_co %>%
+  filter(monitor_id %in% exposed_monitors$monitor_id) %>%
+  ggplot(aes(preprod_count_uw_1to2km, preprod_count_dw_1to2km)) +
+  geom_jitter(aes(color = monitor_id), alpha = 0.1) +
+  theme_classic()
+```
+
+No apparent correlation between exposure to upwind and downwind wells; these are likely the same wells on different days
+
+
+#### Plot. Residuals x upwind exposure, exposed monitors only
+
+Residuals from adjust linear regression model with meteorological and day-of-week controls with FE for basin-month and basin-year.
+
+```{r echo=FALSE}
+data_co %>%
+  filter(monitor_id %in% exposed_monitors$monitor_id) %>%
+  ggplot(aes(preprod_count_uw_1to2km, residuals)) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_point(aes(color = monitor_id), alpha = 0.1) +
+  geom_smooth(method = "lm", formula = y ~ x) +
+  theme_classic()
+```
+
+This is our negative result for CO, which doesn't make sense based on my current understanding of the theory.
+
+
+#### Plot. Residuals x downwind placebo "exposure," exposed monitors only
+
+Residuals from adjust linear regression model with meteorological and day-of-week controls with FE for basin-month and basin-year.
+
+```{r echo=FALSE}
+data_co %>%
+  filter(monitor_id %in% exposed_monitors$monitor_id) %>%
+  ggplot(aes(preprod_count_dw_1to2km, residuals)) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_point(aes(color = monitor_id), alpha = 0.1) +
+  geom_smooth(method = "lm", formula = y ~ x) +
+  theme_classic()
+```
+
+The result is consistent when we look at downwind exposure, and similar to the above plot for upwind exposure. It's still not clear to me what's going on.
+
+#### Plot. Residuals x upwind exposure, all monitors
+
+```{r echo=FALSE}
+data_co %>%
+  ggplot(aes(preprod_count_uw_1to2km, residuals)) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_point(alpha = 0.1) +
+  geom_smooth(method = "lm", formula = y ~ x) +
+  theme_classic()
+```
+
+Going back to upwind exposure, this is our negative result for CO using the full analyic dataset. The result doesn't make sense based on my current understanding of the theory.
+
+
+#### Plot. Time series of CO at monitor 060370031 (Los Angeles County)
+
+```{r include=FALSE}
+panel_a <- data_co %>%
+  filter(monitor_id == "060370031") %>%
+  ggplot(aes(date, co_max)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "loess", formula = y ~ x) +
+  labs(x = "", y = "CO (ppm)") +
+  theme_classic() +
+  theme(axis.line.x  = element_blank(),  # removes x-axis
+        axis.ticks.x = element_blank(),
+        axis.text.x  = element_blank())
+```
+
+```{r include=FALSE}
+panel_b <- data_co %>%
+  filter(monitor_id == "060370031") %>%
+  ggplot() +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_point(aes(date, residuals), alpha = 0.5) +
+  theme_classic() +
+  labs(x = "", y = "CO Residuals") +
+  theme(axis.line.x  = element_blank(),  # removes x-axis
+        axis.ticks.x = element_blank(),
+        axis.text.x  = element_blank())
+```
+
+```{r include=FALSE}
+panel_c <- data_co %>%
+  filter(monitor_id == "060370031") %>%
+  filter(preprod_count_uw_1to2km > 0) %>%
+  ggplot() +
+  geom_bar(aes(date, preprod_count_uw_1to2km), stat = "identity") +
+  scale_y_continuous(breaks = 1) +
+  labs(x = "", y = "n upwind wells") +
+  theme_classic() +
+  theme(axis.line.x  = element_blank(),  # removes x-axis
+        axis.ticks.x = element_blank(),
+        axis.text.x  = element_blank())
+```
+
+```{r include=FALSE}
+panel_d <- data_co %>%
+  filter(monitor_id == "060370031") %>%
+  ggplot() +
+  geom_bar(aes(date, preprod_count_dw_1to2km), stat = "identity") +
+  scale_y_continuous(breaks = 1) +
+  labs(x = "Date", y = "n downwind wells") +
+  theme_classic()
+panel_d
+```
+
+```{r echo=FALSE, warning=FALSE}
+figure <- panel_a / panel_b / panel_c / panel_d
+figure
+ggsave(filename = "time_series_monitor_060370031_co.png",
+       plot = figure, device = "png", height = 6, width = 6,
+       path = "../../output/figures/supplemental/")
+```
+
+Monitor 060360031 collected just over a year's worth of CO data. It appears that there was some sort of event in winter 2001-02 that produced higher concentrations of CO.
+
+
+#### Plot. Time series of CO at monitor 060374002 (Los Angeles County)
+
+```{r include=FALSE}
+panel_a <- data_co %>%
+  filter(monitor_id == "060374002") %>%
+  filter(year %in% c(2010:2013)) %>%
+  ggplot(aes(date, co_max)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "loess", formula = y ~ x) +
+  labs(x = "", y = "CO (ppm)") +
+  theme_classic() +
+  theme(axis.line.x  = element_blank(),  # removes x-axis
+        axis.ticks.x = element_blank(),
+        axis.text.x  = element_blank())
+```
+
+```{r include=FALSE}
+panel_b <- data_co %>%
+  filter(monitor_id == "060374002") %>%
+  filter(year %in% c(2010:2013)) %>%
+  ggplot() +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_point(aes(date, residuals), alpha = 0.5) +
+  theme_classic() +
+  labs(x = "", y = "CO Residuals") +
+  theme(axis.line.x  = element_blank(),  # removes x-axis
+        axis.ticks.x = element_blank(),
+        axis.text.x  = element_blank())
+```
+
+```{r include=FALSE}
+panel_c <- data_co %>%
+  filter(monitor_id == "060374002") %>%
+  filter(year %in% c(2010:2013)) %>%
+  ggplot() +
+  geom_bar(aes(date, preprod_count_uw_1to2km), stat = "identity") +
+  scale_y_continuous(breaks = 1) +
+  labs(x = "", y = "n upwind wells") +
+  theme_classic() +
+  theme(axis.line.x  = element_blank(),  # removes x-axis
+        axis.ticks.x = element_blank(),
+        axis.text.x  = element_blank())
+```
+
+```{r include=FALSE}
+panel_d <- data_co %>%
+  filter(monitor_id == "060374002") %>%
+  filter(year %in% c(2010:2013)) %>%
+  ggplot() +
+  geom_bar(aes(date, preprod_count_dw_1to2km), stat = "identity") +
+  scale_y_continuous(breaks = 1) +
+  labs(x = "Date", y = "n downwind wells") +
+  theme_classic()
+```
+
+```{r echo=FALSE, warning=FALSE}
+figure <- panel_a / panel_b / panel_c / panel_d
+figure
+ggsave(filename = "time_series_monitor_060374002_co.png",
+       plot = figure, device = "png", height = 6, width = 6,
+       path = "../../output/figures/supplemental/")
+```
+
+
+#### Plot. Time series of CO at monitor 060371602 (Los Angeles County)
+
+```{r include=FALSE}
+panel_a <- data_co %>%
+  filter(monitor_id == "060371602") %>%
+  filter(year %in% c(2013:2014)) %>%
+  ggplot(aes(date, co_max)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "loess", formula = y ~ x) +
+  labs(x = "", y = "CO (ppm)") +
+  theme_classic() +
+  theme(axis.line.x  = element_blank(),  # removes x-axis
+        axis.ticks.x = element_blank(),
+        axis.text.x  = element_blank())
+```
+
+```{r include=FALSE}
+panel_b <- data_co %>%
+  filter(monitor_id == "060371602") %>%
+  filter(year %in% c(2013:2014)) %>%
+  ggplot() +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_point(aes(date, residuals), alpha = 0.5) +
+  theme_classic() +
+  labs(x = "", y = "CO Residuals") +
+  theme(axis.line.x  = element_blank(),  # removes x-axis
+        axis.ticks.x = element_blank(),
+        axis.text.x  = element_blank())
+```
+
+```{r include=FALSE}
+panel_c <- data_co %>%
+  filter(monitor_id == "060371602") %>%
+  filter(year %in% c(2013:2014)) %>%
+  ggplot() +
+  geom_bar(aes(date, preprod_count_uw_1to2km), stat = "identity") +
+  scale_y_continuous(breaks = 1) +
+  labs(x = "", y = "n upwind wells") +
+  theme_classic() +
+  theme(axis.line.x  = element_blank(),  # removes x-axis
+        axis.ticks.x = element_blank(),
+        axis.text.x  = element_blank())
+```
+
+```{r include=FALSE}
+panel_d <- data_co %>%
+  filter(monitor_id == "060371602") %>%
+  filter(year %in% c(2013:2014)) %>%
+  ggplot() +
+  geom_bar(aes(date, preprod_count_dw_1to2km), stat = "identity") +
+  scale_y_continuous(breaks = 1) +
+  labs(x = "Date", y = "n downwind wells") +
+  theme_classic()
+```
+
+```{r echo=FALSE, warning=FALSE}
+figure <- panel_a / panel_b / panel_c / panel_d
+figure
+ggsave(filename = "time_series_monitor_060371602_co.png",
+       plot = figure, device = "png", height = 6, width = 6,
+       path = "../../output/figures/supplemental/")
+```
+
+Barely any data coming from this monitor; only two days of upwind exposure during the study period. Long time series on this monitor, the plot is restricted to 2013-14.
+
+#### Plot. Time series of CO at monitor 060131002 (Contra Costa County)
+
+```{r include=FALSE}
+panel_a <- data_co %>%
+  filter(monitor_id == "060131002") %>%
+  filter(year %in% c(1999:2002)) %>%
+  ggplot(aes(date, co_max)) +
+  geom_point(alpha = 0.1) +
+  geom_smooth(method = "loess", formula = y ~ x) +
+  labs(x = "", y = "CO (ppm)") +
+  theme_classic() +
+  theme(axis.line.x  = element_blank(),  # removes x-axis
+        axis.ticks.x = element_blank(),
+        axis.text.x  = element_blank())
+```
+
+```{r include=FALSE}
+panel_b <- data_co %>%
+  filter(monitor_id == "060131002") %>%
+  filter(year %in% c(1999:2002)) %>%
+  ggplot() +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_point(aes(date, residuals), alpha = 0.1) +
+  theme_classic() +
+  labs(x = "", y = "CO Residuals") +
+  theme(axis.line.x  = element_blank(),  # removes x-axis
+        axis.ticks.x = element_blank(),
+        axis.text.x  = element_blank())
+```
+
+```{r include=FALSE}
+panel_c <- data_co %>%
+  filter(monitor_id == "060131002") %>%
+  filter(year %in% c(1999:2002)) %>%
+  ggplot() +
+  geom_bar(aes(date, preprod_count_uw_1to2km), stat = "identity") +
+  scale_y_continuous(breaks = 1) +
+  labs(x = "", y = "n upwind wells") +
+  theme_classic() +
+  theme(axis.line.x  = element_blank(),  # removes x-axis
+        axis.ticks.x = element_blank(),
+        axis.text.x  = element_blank())
+```
+
+```{r include=FALSE}
+panel_d <- data_co %>%
+  filter(monitor_id == "060131002") %>%
+  filter(year %in% c(1999:2002)) %>%
+  ggplot() +
+  geom_bar(aes(date, preprod_count_dw_1to2km), stat = "identity") +
+  scale_y_continuous(breaks = 1) +
+  labs(x = "Date", y = "n downwind wells") +
+  theme_classic()
+```
+
+```{r echo=FALSE, warning=FALSE}
+figure <- panel_a / panel_b / panel_c / panel_d
+figure
+ggsave(filename = "time_series_monitor_060131002_co.png",
+       plot = figure, device = "png", height = 6, width = 6,
+       path = "../../output/figures/supplemental/")
+```
+
+We have CO data on all years for this monitor (1999-2019); exposure, however, is restricted to 1999-2005. There seems to be seasonal and secular trends that aren't well controlled for in the model. The residuals in 1999-2005 are lower than in later years.
+
+## Summary
+
+For the confusing CO result, where we found a decrease in [CO] for both upwind and downwind wells at 1-2 km, most of the estimates are coming from two monitors (060370031 in Los Angeles County and 060131002 in Contra Costa). For both of these monitors, the periods with exposure happens to coincide with times when the residuals (from the adjusted FELM) are mechanically lower. There seems to be seasonal and secular trends that aren't well controlled for in the current model.
+
+
+## Follow-up
+
+Message from Marshall: "so the other thing to try is a monitor x month FE - basically taking out the seasonality at a monitor level.  since you have a long time series at most statiosn this should be fine in terms of not killign all your variation. so instead of monitor Fe you have monitor-month FE (i.e. 12 dummies per monitor) and then air basin x year"
+
+So let's do taht
+
+```{r data_tidying2, include=FALSE}
+model_fit <- felm(co_max ~ 
+                    narr_precip + 
+                    narr_temp +
+                    narr_wind_speed
+                  | day_of_week + 
+                    factor(monitor_id):factor(month) +  # monitor-month FE
+                    factor(carb_basin):factor(year),
+                  data = data_co)
+data_co$residuals2 = as.numeric(residuals(model_fit))
+```
+
+
+#### Plot. Time series of CO at monitor 060370031 (Los Angeles County)
+
+**With monitor-month FE instead of basin-month FE**
+
+```{r include=FALSE}
+panel_a <- data_co %>%
+  filter(monitor_id == "060370031") %>%
+  ggplot(aes(date, co_max)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "loess", formula = y ~ x) +
+  labs(x = "", y = "CO (ppm)") +
+  theme_classic() +
+  theme(axis.line.x  = element_blank(),  # removes x-axis
+        axis.ticks.x = element_blank(),
+        axis.text.x  = element_blank())
+```
+
+```{r include=FALSE}
+panel_b <- data_co %>%
+  filter(monitor_id == "060370031") %>%
+  ggplot() +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_point(aes(date, residuals2), alpha = 0.5) +
+  theme_classic() +
+  labs(x = "", y = "CO Residuals") +
+  theme(axis.line.x  = element_blank(),  # removes x-axis
+        axis.ticks.x = element_blank(),
+        axis.text.x  = element_blank())
+```
+
+```{r include=FALSE}
+panel_c <- data_co %>%
+  filter(monitor_id == "060370031") %>%
+  filter(preprod_count_uw_1to2km > 0) %>%
+  ggplot() +
+  geom_bar(aes(date, preprod_count_uw_1to2km), stat = "identity") +
+  scale_y_continuous(breaks = 1) +
+  labs(x = "", y = "n upwind wells") +
+  theme_classic() +
+  theme(axis.line.x  = element_blank(),  # removes x-axis
+        axis.ticks.x = element_blank(),
+        axis.text.x  = element_blank())
+```
+
+```{r include=FALSE}
+panel_d <- data_co %>%
+  filter(monitor_id == "060370031") %>%
+  ggplot() +
+  geom_bar(aes(date, preprod_count_dw_1to2km), stat = "identity") +
+  scale_y_continuous(breaks = 1) +
+  labs(x = "Date", y = "n downwind wells") +
+  theme_classic()
+```
+
+```{r echo=FALSE, warning=FALSE}
+figure <- panel_a / panel_b / panel_c / panel_d
+figure
+ggsave(filename = "time_series_monitor_060370031_co_b.png",
+       plot = figure, device = "png", height = 6, width = 6,
+       path = "../../output/figures/supplemental/")
+```
+
+
+#### Plot. Time series of CO at monitor 060131002 (Contra Costa County)
+
+**With monitor-month FE instead of basin-month FE**
+
+```{r include=FALSE}
+panel_a <- data_co %>%
+  filter(monitor_id == "060131002") %>%
+  filter(year %in% c(1999:2002)) %>%
+  ggplot(aes(date, co_max)) +
+  geom_point(alpha = 0.1) +
+  geom_smooth(method = "loess", formula = y ~ x) +
+  labs(x = "", y = "CO (ppm)") +
+  theme_classic() +
+  theme(axis.line.x  = element_blank(),  # removes x-axis
+        axis.ticks.x = element_blank(),
+        axis.text.x  = element_blank())
+```
+
+```{r include=FALSE}
+panel_b <- data_co %>%
+  filter(monitor_id == "060131002") %>%
+  filter(year %in% c(1999:2002)) %>%
+  ggplot() +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_point(aes(date, residuals2), alpha = 0.1) +
+  theme_classic() +
+  labs(x = "", y = "CO Residuals") +
+  theme(axis.line.x  = element_blank(),  # removes x-axis
+        axis.ticks.x = element_blank(),
+        axis.text.x  = element_blank())
+```
+
+```{r include=FALSE}
+panel_c <- data_co %>%
+  filter(monitor_id == "060131002") %>%
+  filter(year %in% c(1999:2002)) %>%
+  ggplot() +
+  geom_bar(aes(date, preprod_count_uw_1to2km), stat = "identity") +
+  scale_y_continuous(breaks = 1) +
+  labs(x = "", y = "n upwind wells") +
+  theme_classic() +
+  theme(axis.line.x  = element_blank(),  # removes x-axis
+        axis.ticks.x = element_blank(),
+        axis.text.x  = element_blank())
+```
+
+```{r include=FALSE}
+panel_d <- data_co %>%
+  filter(monitor_id == "060131002") %>%
+  filter(year %in% c(1999:2002)) %>%
+  ggplot() +
+  geom_bar(aes(date, preprod_count_dw_1to2km), stat = "identity") +
+  scale_y_continuous(breaks = 1) +
+  labs(x = "Date", y = "n downwind wells") +
+  theme_classic()
+```
+
+```{r echo=FALSE, warning=FALSE}
+figure <- panel_a / panel_b / panel_c / panel_d
+figure
+ggsave(filename = "time_series_monitor_060131002_co_b.png",
+       plot = figure, device = "png", height = 6, width = 6,
+       path = "../../output/figures/supplemental/")
+```

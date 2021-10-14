@@ -1,0 +1,43 @@
+---
+title: "Output - Table S3 - Correlation coefficients"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+source("../../code/0-setup/1-setup.R")
+library("table1")
+```
+
+```{r input_data, include=FALSE}
+aqs_daily_annuli_exposure <- 
+  readRDS("../../data/processed/aqs_daily_annuli_exposure.rds") %>%
+  filter(year %in% c(2006:2019))
+```
+
+Pearson's correlation coefficients withing and among exposure types
+
+### Correlation within preproduction
+
+```{r echo=FALSE}
+table_s3 <- aqs_daily_annuli_exposure %>%
+  select(preprod_count_uw_0to1km, 
+         preprod_count_uw_1to2km, 
+         preprod_count_uw_2to3km, 
+         preprod_count_uw_3to4km, 
+         preprod_count_uw_4to5km, 
+         prod_volume_upwind_0to1km,
+         prod_volume_upwind_1to2km,
+         prod_volume_upwind_2to3km,
+         prod_volume_upwind_3to4km,
+         prod_volume_upwind_4to5km) %>%
+  cor(method = c("pearson")) %>%
+  round(2)
+```
+
+```{r echo=FALSE}
+table_s3
+```
+
+```{r include=FALSE}
+write_csv(as.data.frame(table_s3), "table_s3.csv")
+```

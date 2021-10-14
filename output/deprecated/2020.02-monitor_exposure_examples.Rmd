@@ -1,0 +1,695 @@
+---
+title: "Ch. 3: Oil Production and Air Quality in California"
+subtitle: "Visualization of example monitor exposure to well sites"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+# sets up RStudio workspace
+  source("../../code/0-setup/01-setup.R")
+```
+
+```{r data_import, include=FALSE}
+# imports raw data
+  # California Air Resources Board (CARB) - administrative shapefiles
+  carb_air_basins_raw <-
+    st_read("../../data/raw/cal_epa/carb_air_basins/CaAirBasin.shp")
+  carb_air_districts_raw <-
+    st_read("../../data/raw/cal_epa/carb_air_districts/CaAirDistrict.shp")
+  # DrillingInfo - oil and gas well sites
+  di_wells_raw <-
+    read_csv("../../data/raw/drillinginfo/california_wells_jan2019.csv")
+  # US Census Bureau - administrative shapefiles
+  cal_counties_raw <- 
+    st_read("../../data/raw/us_census/admin_shp/cal_counties.shp")
+  us_states_raw <- 
+    st_read("../../data/raw/us_census/admin_shp/tl_2018_us_state.shp")
+  
+# imports interim data
+  aqs_exposure_annuli <- read_csv("../../data/interim/aqs_exposure_annuli.csv")
+```
+
+```{r data_tidying, include=FALSE}
+# loads functions for tidying the data
+  source("../../code/2-tidying/02-tidy_drilling_data.R")
+    
+# calls functions to tidy all necessary datasets
+  di_wells <- prepDrillingData(di_wells_raw)
+
+# prepares datasets necessary for this notebook
+  
+  # California Air Resources Board
+  carb_air_basins <- carb_air_basins_raw %>%
+    st_transform(crs_nad83)
+  carb_air_districts <- carb_air_districts_raw %>%
+    st_transform(crs_nad83)
+  
+  # US Census
+  cal_counties <- cal_counties_raw %>%
+    st_transform(crs_nad83)
+  us_states <- us_states_raw %>%
+    st_transform(crs_nad83)    
+
+  # sites of air quality monitors, sf object
+  aqs_sites <- aqs_exposure_annuli %>%
+    # keeps only each unique air monitor
+    distinct(site_id, .keep_all = TRUE) %>% 
+    # drops columns we don't need
+    select(-c(monthly_mean_co:monthly_mean_so2)) %>%
+    # converts to sf object
+    st_as_sf(coords = c("longitude", "latitude"), crs = crs_nad83)
+
+  # wells in preproduction stage during the study period, sf object
+  wells_preprod <- di_wells %>%
+    filter(drilled_1999_to_2019 == 1) %>%
+    st_as_sf(coords = c("longitude", "latitude"), crs = crs_nad83)
+    
+  # wells in production stage during the study period, sf object
+  wells_prod <- di_wells %>%
+    filter(prod_1999_to_2019 == 1) %>%
+    st_as_sf(coords = c("longitude", "latitude"), crs = crs_nad83)
+  
+# preps wells data for making maps
+  # makes dataset with wells
+  wells_sf <- di_wells %>%
+    st_as_sf(crs = crs_nad83, coords = c("longitude", "latitude"))
+  
+# subsets wells data into two mutually exclusive datasets: well sites in 
+# (a) preproduction and (b) production stages
+  # well sites in production
+  wells_sf_preprod <- wells_sf %>%
+    filter(drilled_1999_to_2019 == 1)
+  # well sites in preproduction
+  wells_sf_prod <- wells_sf %>%
+    filter(drilled_1999_to_2019 == 0 & prod_1999_to_2019 == 1)
+  
+  # preps data for FE models
+  aqs_exposure_annuli <- aqs_sites %>%
+    # spatial join
+    st_join(carb_air_basins) %>%
+    # drops extraneous columns
+    select(-c(wells_preprod_0to1km:wells_prod_14to15km), - month_year) %>%
+    # joins with primary dataset
+    left_join(aqs_exposure_annuli, by = "site_id") %>%
+    # renames necessary variables
+    rename(basin_name = NAME)
+```
+
+```{r map_060290232_prep, echo=FALSE, message=FALSE, warning=FALSE}
+# sets up data
+  # layer - mock residence location
+  lyr_monitor <- aqs_sites %>% filter(site_id == "060290232")
+    
+  # intiates annuli as buffers
+  lyr_annulus0to1 <- lyr_monitor %>% 
+    st_transform(crs_projected) %>%
+    st_buffer(dist = 1000) %>%
+    st_transform(crs_nad83)
+  lyr_annulus1to2 <- lyr_monitor %>% 
+    st_transform(crs_projected) %>%
+    st_buffer(dist = 2000) %>%
+    st_transform(crs_nad83)
+  lyr_annulus2to3 <- lyr_monitor %>% 
+    st_transform(crs_projected) %>%
+    st_buffer(dist = 3000) %>%
+    st_transform(crs_nad83)
+  lyr_annulus3to4 <- lyr_monitor %>% 
+    st_transform(crs_projected) %>%
+    st_buffer(dist = 4000) %>%
+    st_transform(crs_nad83)
+  lyr_annulus4to5 <- lyr_monitor %>% 
+    st_transform(crs_projected) %>%
+    st_buffer(dist = 5000) %>%
+    st_transform(crs_nad83)
+  lyr_annulus5to6 <- lyr_monitor %>% 
+    st_transform(crs_projected) %>%
+    st_buffer(dist = 6000) %>%
+    st_transform(crs_nad83)
+  lyr_annulus6to7 <- lyr_monitor %>% 
+    st_transform(crs_projected) %>%
+    st_buffer(dist = 7000) %>%
+    st_transform(crs_nad83)
+  lyr_annulus7to8 <- lyr_monitor %>% 
+    st_transform(crs_projected) %>%
+    st_buffer(dist = 8000) %>%
+    st_transform(crs_nad83)
+  lyr_annulus8to9 <- lyr_monitor %>% 
+    st_transform(crs_projected) %>%
+    st_buffer(dist = 9000) %>%
+    st_transform(crs_nad83)
+  lyr_annulus9to10 <- lyr_monitor %>% 
+    st_transform(crs_projected) %>%
+    st_buffer(dist = 10000) %>%
+    st_transform(crs_nad83)
+  
+  # finalizes annuli by subtracting differences
+  lyr_annulus9to10 <- st_difference(lyr_annulus9to10, lyr_annulus8to9)
+  lyr_annulus8to9 <- st_difference(lyr_annulus8to9, lyr_annulus7to8)
+  lyr_annulus7to8 <- st_difference(lyr_annulus7to8, lyr_annulus6to7)
+  lyr_annulus6to7 <- st_difference(lyr_annulus6to7, lyr_annulus5to6)
+  lyr_annulus5to6 <- st_difference(lyr_annulus5to6, lyr_annulus4to5)
+  lyr_annulus4to5 <- st_difference(lyr_annulus4to5, lyr_annulus3to4)
+  lyr_annulus3to4 <- st_difference(lyr_annulus3to4, lyr_annulus2to3)
+  lyr_annulus2to3 <- st_difference(lyr_annulus2to3, lyr_annulus1to2)
+  lyr_annulus1to2 <- st_difference(lyr_annulus1to2, lyr_annulus0to1)
+  
+  # makes residence mask with 10 km buffer
+  monitor_mask <- lyr_monitor %>%
+    # transforms into projected CRS for buffering
+    st_transform(crs_projected) %>%
+    # makes 20,000 m (20 km) buffer
+    st_buffer(dist = 10000) %>%
+    # merges polygons into one
+    st_union() %>%
+    # transforms back to primary project CRS
+    st_transform(crs_nad83)
+  
+  # subsets wells to those within 10 km of the residence, i.e., w/in the mask
+  lyr_wells_preprod <- wells_sf_preprod %>% st_intersection(monitor_mask)
+  lyr_wells_prod <- wells_sf_prod %>% st_intersection(monitor_mask)
+```
+
+```{r map_060290232_plot, echo=FALSE}
+# makes map
+  map_2a <- ggplot() +
+    #geom_sf(data = lyr_wells_prod, color = "#FFFFFF") +
+    geom_sf(data = lyr_annulus0to1, color = "#FFFFFF", fill = "#FFFFFF") +
+    geom_sf(data = lyr_annulus1to2, color = "#E0E0E0", fill = "#E0E0E0") +
+    geom_sf(data = lyr_annulus2to3, color = "#FFFFFF", fill = "#FFFFFF") +
+    geom_sf(data = lyr_annulus3to4, color = "#E0E0E0", fill = "#E0E0E0") +
+    geom_sf(data = lyr_annulus4to5, color = "#FFFFFF", fill = "#FFFFFF") +
+    geom_sf(data = lyr_annulus5to6, color = "#E0E0E0", fill = "#E0E0E0") +
+    geom_sf(data = lyr_annulus6to7, color = "#FFFFFF", fill = "#FFFFFF") +
+    geom_sf(data = lyr_annulus7to8, color = "#E0E0E0", fill = "#E0E0E0") +
+    geom_sf(data = lyr_annulus8to9, color = "#FFFFFF", fill = "#FFFFFF") +
+    geom_sf(data = lyr_annulus9to10, color = "#E0E0E0", fill = "#E0E0E0") +
+    geom_sf(data = lyr_wells_prod, shape = 4, color = "#808080") +
+    geom_sf(data = lyr_wells_preprod, shape = 4, color = "#fc8d59") +
+    geom_sf(data = lyr_monitor, shape = 17, size = 2) +
+    annotation_scale(location = "bl", width_hint = 0.1) +
+    labs(title = "Bakersfield, CA (Monitor 060290232)",
+         subtitle = "Coordinates: 35.438035, -119.016787") +
+    theme_bw()
+```
+
+```{r map_060370031_prep, echo=FALSE, message=FALSE, warning=FALSE}
+# sets up data
+  # layer - mock residence location
+  lyr_monitor <- aqs_sites %>% filter(site_id == "060370031")
+    
+  # intiates annuli as buffers
+  lyr_annulus0to1 <- lyr_monitor %>% 
+    st_transform(crs_projected) %>%
+    st_buffer(dist = 1000) %>%
+    st_transform(crs_nad83)
+  lyr_annulus1to2 <- lyr_monitor %>% 
+    st_transform(crs_projected) %>%
+    st_buffer(dist = 2000) %>%
+    st_transform(crs_nad83)
+  lyr_annulus2to3 <- lyr_monitor %>% 
+    st_transform(crs_projected) %>%
+    st_buffer(dist = 3000) %>%
+    st_transform(crs_nad83)
+  lyr_annulus3to4 <- lyr_monitor %>% 
+    st_transform(crs_projected) %>%
+    st_buffer(dist = 4000) %>%
+    st_transform(crs_nad83)
+  lyr_annulus4to5 <- lyr_monitor %>% 
+    st_transform(crs_projected) %>%
+    st_buffer(dist = 5000) %>%
+    st_transform(crs_nad83)
+  lyr_annulus5to6 <- lyr_monitor %>% 
+    st_transform(crs_projected) %>%
+    st_buffer(dist = 6000) %>%
+    st_transform(crs_nad83)
+  lyr_annulus6to7 <- lyr_monitor %>% 
+    st_transform(crs_projected) %>%
+    st_buffer(dist = 7000) %>%
+    st_transform(crs_nad83)
+  lyr_annulus7to8 <- lyr_monitor %>% 
+    st_transform(crs_projected) %>%
+    st_buffer(dist = 8000) %>%
+    st_transform(crs_nad83)
+  lyr_annulus8to9 <- lyr_monitor %>% 
+    st_transform(crs_projected) %>%
+    st_buffer(dist = 9000) %>%
+    st_transform(crs_nad83)
+  lyr_annulus9to10 <- lyr_monitor %>% 
+    st_transform(crs_projected) %>%
+    st_buffer(dist = 10000) %>%
+    st_transform(crs_nad83)
+  
+  # finalizes annuli by subtracting differences
+  lyr_annulus9to10 <- st_difference(lyr_annulus9to10, lyr_annulus8to9)
+  lyr_annulus8to9 <- st_difference(lyr_annulus8to9, lyr_annulus7to8)
+  lyr_annulus7to8 <- st_difference(lyr_annulus7to8, lyr_annulus6to7)
+  lyr_annulus6to7 <- st_difference(lyr_annulus6to7, lyr_annulus5to6)
+  lyr_annulus5to6 <- st_difference(lyr_annulus5to6, lyr_annulus4to5)
+  lyr_annulus4to5 <- st_difference(lyr_annulus4to5, lyr_annulus3to4)
+  lyr_annulus3to4 <- st_difference(lyr_annulus3to4, lyr_annulus2to3)
+  lyr_annulus2to3 <- st_difference(lyr_annulus2to3, lyr_annulus1to2)
+  lyr_annulus1to2 <- st_difference(lyr_annulus1to2, lyr_annulus0to1)
+  
+  # makes residence mask with 10 km buffer
+  monitor_mask <- lyr_monitor %>%
+    # transforms into projected CRS for buffering
+    st_transform(crs_projected) %>%
+    # makes 20,000 m (20 km) buffer
+    st_buffer(dist = 10000) %>%
+    # merges polygons into one
+    st_union() %>%
+    # transforms back to primary project CRS
+    st_transform(crs_nad83)
+  
+  # subsets wells to those within 10 km of the residence, i.e., w/in the mask
+  lyr_wells_preprod <- wells_sf_preprod %>% st_intersection(monitor_mask)
+  lyr_wells_prod <- wells_sf_prod %>% st_intersection(monitor_mask)
+```
+
+```{r map_060370031_plot, echo=FALSE}
+# makes map
+  map_2b <- ggplot() +
+    #geom_sf(data = lyr_wells_prod, color = "#FFFFFF") +
+    geom_sf(data = lyr_annulus0to1, color = "#FFFFFF", fill = "#FFFFFF") +
+    geom_sf(data = lyr_annulus1to2, color = "#E0E0E0", fill = "#E0E0E0") +
+    geom_sf(data = lyr_annulus2to3, color = "#FFFFFF", fill = "#FFFFFF") +
+    geom_sf(data = lyr_annulus3to4, color = "#E0E0E0", fill = "#E0E0E0") +
+    geom_sf(data = lyr_annulus4to5, color = "#FFFFFF", fill = "#FFFFFF") +
+    geom_sf(data = lyr_annulus5to6, color = "#E0E0E0", fill = "#E0E0E0") +
+    geom_sf(data = lyr_annulus6to7, color = "#FFFFFF", fill = "#FFFFFF") +
+    geom_sf(data = lyr_annulus7to8, color = "#E0E0E0", fill = "#E0E0E0") +
+    geom_sf(data = lyr_annulus8to9, color = "#FFFFFF", fill = "#FFFFFF") +
+    geom_sf(data = lyr_annulus9to10, color = "#E0E0E0", fill = "#E0E0E0") +
+    geom_sf(data = lyr_wells_prod, shape = 4, color = "#808080") +
+    geom_sf(data = lyr_wells_preprod, shape = 4, color = "#fc8d59") +
+    geom_sf(data = lyr_monitor, shape = 17, size = 2) +
+    annotation_scale(location = "bl", width_hint = 0.1) +
+    labs(title = "Wilmington (Los Angeles), CA (Monitor 060370031)",
+         subtitle = "Coordinates: 33.786111, -118.246389") +
+    theme_bw()
+```
+
+```{r map_060374002_prep, echo=FALSE, message=FALSE, warning=FALSE}
+# Map. Long Beach, CA (Monitor 060374002)
+
+# sets up data
+  # layer - mock residence location
+  lyr_monitor <- aqs_sites %>% filter(site_id == "060374002")
+    
+  # intiates annuli as buffers
+  lyr_annulus0to1 <- lyr_monitor %>% 
+    st_transform(crs_projected) %>%
+    st_buffer(dist = 1000) %>%
+    st_transform(crs_nad83)
+  lyr_annulus1to2 <- lyr_monitor %>% 
+    st_transform(crs_projected) %>%
+    st_buffer(dist = 2000) %>%
+    st_transform(crs_nad83)
+  lyr_annulus2to3 <- lyr_monitor %>% 
+    st_transform(crs_projected) %>%
+    st_buffer(dist = 3000) %>%
+    st_transform(crs_nad83)
+  lyr_annulus3to4 <- lyr_monitor %>% 
+    st_transform(crs_projected) %>%
+    st_buffer(dist = 4000) %>%
+    st_transform(crs_nad83)
+  lyr_annulus4to5 <- lyr_monitor %>% 
+    st_transform(crs_projected) %>%
+    st_buffer(dist = 5000) %>%
+    st_transform(crs_nad83)
+  lyr_annulus5to6 <- lyr_monitor %>% 
+    st_transform(crs_projected) %>%
+    st_buffer(dist = 6000) %>%
+    st_transform(crs_nad83)
+  lyr_annulus6to7 <- lyr_monitor %>% 
+    st_transform(crs_projected) %>%
+    st_buffer(dist = 7000) %>%
+    st_transform(crs_nad83)
+  lyr_annulus7to8 <- lyr_monitor %>% 
+    st_transform(crs_projected) %>%
+    st_buffer(dist = 8000) %>%
+    st_transform(crs_nad83)
+  lyr_annulus8to9 <- lyr_monitor %>% 
+    st_transform(crs_projected) %>%
+    st_buffer(dist = 9000) %>%
+    st_transform(crs_nad83)
+  lyr_annulus9to10 <- lyr_monitor %>% 
+    st_transform(crs_projected) %>%
+    st_buffer(dist = 10000) %>%
+    st_transform(crs_nad83)
+  
+  # finalizes annuli by subtracting differences
+  lyr_annulus9to10 <- st_difference(lyr_annulus9to10, lyr_annulus8to9)
+  lyr_annulus8to9 <- st_difference(lyr_annulus8to9, lyr_annulus7to8)
+  lyr_annulus7to8 <- st_difference(lyr_annulus7to8, lyr_annulus6to7)
+  lyr_annulus6to7 <- st_difference(lyr_annulus6to7, lyr_annulus5to6)
+  lyr_annulus5to6 <- st_difference(lyr_annulus5to6, lyr_annulus4to5)
+  lyr_annulus4to5 <- st_difference(lyr_annulus4to5, lyr_annulus3to4)
+  lyr_annulus3to4 <- st_difference(lyr_annulus3to4, lyr_annulus2to3)
+  lyr_annulus2to3 <- st_difference(lyr_annulus2to3, lyr_annulus1to2)
+  lyr_annulus1to2 <- st_difference(lyr_annulus1to2, lyr_annulus0to1)
+  
+  # makes residence mask with 10 km buffer
+  monitor_mask <- lyr_monitor %>%
+    # transforms into projected CRS for buffering
+    st_transform(crs_projected) %>%
+    # makes 20,000 m (20 km) buffer
+    st_buffer(dist = 10000) %>%
+    # merges polygons into one
+    st_union() %>%
+    # transforms back to primary project CRS
+    st_transform(crs_nad83)
+  
+  # subsets wells to those within 10 km of the residence, i.e., w/in the mask
+  lyr_wells_preprod <- wells_sf_preprod %>% st_intersection(monitor_mask)
+  lyr_wells_prod <- wells_sf_prod %>% st_intersection(monitor_mask)
+```
+
+```{r map_060374002_plot, echo=FALSE}
+# makes map
+  map_2c <- ggplot() +
+    #geom_sf(data = lyr_wells_prod, color = "#FFFFFF") +
+    geom_sf(data = lyr_annulus0to1, color = "#FFFFFF", fill = "#FFFFFF") +
+    geom_sf(data = lyr_annulus1to2, color = "#E0E0E0", fill = "#E0E0E0") +
+    geom_sf(data = lyr_annulus2to3, color = "#FFFFFF", fill = "#FFFFFF") +
+    geom_sf(data = lyr_annulus3to4, color = "#E0E0E0", fill = "#E0E0E0") +
+    geom_sf(data = lyr_annulus4to5, color = "#FFFFFF", fill = "#FFFFFF") +
+    geom_sf(data = lyr_annulus5to6, color = "#E0E0E0", fill = "#E0E0E0") +
+    geom_sf(data = lyr_annulus6to7, color = "#FFFFFF", fill = "#FFFFFF") +
+    geom_sf(data = lyr_annulus7to8, color = "#E0E0E0", fill = "#E0E0E0") +
+    geom_sf(data = lyr_annulus8to9, color = "#FFFFFF", fill = "#FFFFFF") +
+    geom_sf(data = lyr_annulus9to10, color = "#E0E0E0", fill = "#E0E0E0") +
+    geom_sf(data = lyr_wells_prod, shape = 4, color = "#808080") +
+    geom_sf(data = lyr_wells_preprod, shape = 4, color = "#fc8d59") +
+    geom_sf(data = lyr_monitor, shape = 17, size = 2) +
+    annotation_scale(location = "bl", width_hint = 0.1) +
+    labs(title = "Long Beach, CA (Monitor 060374002)",
+         subtitle = "Coordinates: 33.82376, -118.18921") +
+    theme_bw()
+```
+
+```{r map_060831013_prep, echo=FALSE, message=FALSE, warning=FALSE}
+# Map. Lompoc, CA (Monitor 060831013)
+
+# sets up data
+  # layer - mock residence location
+  lyr_monitor <- aqs_sites %>% filter(site_id == "060831013")
+    
+  # intiates annuli as buffers
+  lyr_annulus0to1 <- lyr_monitor %>% 
+    st_transform(crs_projected) %>%
+    st_buffer(dist = 1000) %>%
+    st_transform(crs_nad83)
+  lyr_annulus1to2 <- lyr_monitor %>% 
+    st_transform(crs_projected) %>%
+    st_buffer(dist = 2000) %>%
+    st_transform(crs_nad83)
+  lyr_annulus2to3 <- lyr_monitor %>% 
+    st_transform(crs_projected) %>%
+    st_buffer(dist = 3000) %>%
+    st_transform(crs_nad83)
+  lyr_annulus3to4 <- lyr_monitor %>% 
+    st_transform(crs_projected) %>%
+    st_buffer(dist = 4000) %>%
+    st_transform(crs_nad83)
+  lyr_annulus4to5 <- lyr_monitor %>% 
+    st_transform(crs_projected) %>%
+    st_buffer(dist = 5000) %>%
+    st_transform(crs_nad83)
+  lyr_annulus5to6 <- lyr_monitor %>% 
+    st_transform(crs_projected) %>%
+    st_buffer(dist = 6000) %>%
+    st_transform(crs_nad83)
+  lyr_annulus6to7 <- lyr_monitor %>% 
+    st_transform(crs_projected) %>%
+    st_buffer(dist = 7000) %>%
+    st_transform(crs_nad83)
+  lyr_annulus7to8 <- lyr_monitor %>% 
+    st_transform(crs_projected) %>%
+    st_buffer(dist = 8000) %>%
+    st_transform(crs_nad83)
+  lyr_annulus8to9 <- lyr_monitor %>% 
+    st_transform(crs_projected) %>%
+    st_buffer(dist = 9000) %>%
+    st_transform(crs_nad83)
+  lyr_annulus9to10 <- lyr_monitor %>% 
+    st_transform(crs_projected) %>%
+    st_buffer(dist = 10000) %>%
+    st_transform(crs_nad83)
+  
+  # finalizes annuli by subtracting differences
+  lyr_annulus9to10 <- st_difference(lyr_annulus9to10, lyr_annulus8to9)
+  lyr_annulus8to9 <- st_difference(lyr_annulus8to9, lyr_annulus7to8)
+  lyr_annulus7to8 <- st_difference(lyr_annulus7to8, lyr_annulus6to7)
+  lyr_annulus6to7 <- st_difference(lyr_annulus6to7, lyr_annulus5to6)
+  lyr_annulus5to6 <- st_difference(lyr_annulus5to6, lyr_annulus4to5)
+  lyr_annulus4to5 <- st_difference(lyr_annulus4to5, lyr_annulus3to4)
+  lyr_annulus3to4 <- st_difference(lyr_annulus3to4, lyr_annulus2to3)
+  lyr_annulus2to3 <- st_difference(lyr_annulus2to3, lyr_annulus1to2)
+  lyr_annulus1to2 <- st_difference(lyr_annulus1to2, lyr_annulus0to1)
+  
+  # makes residence mask with 10 km buffer
+  monitor_mask <- lyr_monitor %>%
+    # transforms into projected CRS for buffering
+    st_transform(crs_projected) %>%
+    # makes 20,000 m (20 km) buffer
+    st_buffer(dist = 10000) %>%
+    # merges polygons into one
+    st_union() %>%
+    # transforms back to primary project CRS
+    st_transform(crs_nad83)
+  
+  # subsets wells to those within 10 km of the residence, i.e., w/in the mask
+  lyr_wells_preprod <- wells_sf_preprod %>% st_intersection(monitor_mask)
+  lyr_wells_prod <- wells_sf_prod %>% st_intersection(monitor_mask)
+```
+
+```{r map_060831013_plot, echo=FALSE}
+# makes map
+  map_2d <- ggplot() +
+    #geom_sf(data = lyr_wells_prod, color = "#FFFFFF") +
+    geom_sf(data = lyr_annulus0to1, color = "#FFFFFF", fill = "#FFFFFF") +
+    geom_sf(data = lyr_annulus1to2, color = "#E0E0E0", fill = "#E0E0E0") +
+    geom_sf(data = lyr_annulus2to3, color = "#FFFFFF", fill = "#FFFFFF") +
+    geom_sf(data = lyr_annulus3to4, color = "#E0E0E0", fill = "#E0E0E0") +
+    geom_sf(data = lyr_annulus4to5, color = "#FFFFFF", fill = "#FFFFFF") +
+    geom_sf(data = lyr_annulus5to6, color = "#E0E0E0", fill = "#E0E0E0") +
+    geom_sf(data = lyr_annulus6to7, color = "#FFFFFF", fill = "#FFFFFF") +
+    geom_sf(data = lyr_annulus7to8, color = "#E0E0E0", fill = "#E0E0E0") +
+    geom_sf(data = lyr_annulus8to9, color = "#FFFFFF", fill = "#FFFFFF") +
+    geom_sf(data = lyr_annulus9to10, color = "#E0E0E0", fill = "#E0E0E0") +
+    geom_sf(data = lyr_wells_prod, shape = 4, color = "#808080") +
+    geom_sf(data = lyr_wells_preprod, shape = 4, color = "#fc8d59") +
+    geom_sf(data = lyr_monitor, shape = 17, size = 2) +
+    annotation_scale(location = "bl", width_hint = 0.1) +
+    labs(title = "Lompoc, CA (Monitor 060831013)",
+         subtitle = "Coordinates: 34.725352, -120.428717") +
+    theme_bw()
+```
+
+```{r map_060131002_prep, echo=FALSE, message=FALSE, warning=FALSE}
+# Map. Oakley, CA (Monitor 060131002) (east of Stockton)
+
+# sets up data
+  # layer - mock residence location
+  lyr_monitor <- aqs_sites %>% filter(site_id == "060131002")
+    
+  # intiates annuli as buffers
+  lyr_annulus0to1 <- lyr_monitor %>% 
+    st_transform(crs_projected) %>%
+    st_buffer(dist = 1000) %>%
+    st_transform(crs_nad83)
+  lyr_annulus1to2 <- lyr_monitor %>% 
+    st_transform(crs_projected) %>%
+    st_buffer(dist = 2000) %>%
+    st_transform(crs_nad83)
+  lyr_annulus2to3 <- lyr_monitor %>% 
+    st_transform(crs_projected) %>%
+    st_buffer(dist = 3000) %>%
+    st_transform(crs_nad83)
+  lyr_annulus3to4 <- lyr_monitor %>% 
+    st_transform(crs_projected) %>%
+    st_buffer(dist = 4000) %>%
+    st_transform(crs_nad83)
+  lyr_annulus4to5 <- lyr_monitor %>% 
+    st_transform(crs_projected) %>%
+    st_buffer(dist = 5000) %>%
+    st_transform(crs_nad83)
+  lyr_annulus5to6 <- lyr_monitor %>% 
+    st_transform(crs_projected) %>%
+    st_buffer(dist = 6000) %>%
+    st_transform(crs_nad83)
+  lyr_annulus6to7 <- lyr_monitor %>% 
+    st_transform(crs_projected) %>%
+    st_buffer(dist = 7000) %>%
+    st_transform(crs_nad83)
+  lyr_annulus7to8 <- lyr_monitor %>% 
+    st_transform(crs_projected) %>%
+    st_buffer(dist = 8000) %>%
+    st_transform(crs_nad83)
+  lyr_annulus8to9 <- lyr_monitor %>% 
+    st_transform(crs_projected) %>%
+    st_buffer(dist = 9000) %>%
+    st_transform(crs_nad83)
+  lyr_annulus9to10 <- lyr_monitor %>% 
+    st_transform(crs_projected) %>%
+    st_buffer(dist = 10000) %>%
+    st_transform(crs_nad83)
+  
+  # finalizes annuli by subtracting differences
+  lyr_annulus9to10 <- st_difference(lyr_annulus9to10, lyr_annulus8to9)
+  lyr_annulus8to9 <- st_difference(lyr_annulus8to9, lyr_annulus7to8)
+  lyr_annulus7to8 <- st_difference(lyr_annulus7to8, lyr_annulus6to7)
+  lyr_annulus6to7 <- st_difference(lyr_annulus6to7, lyr_annulus5to6)
+  lyr_annulus5to6 <- st_difference(lyr_annulus5to6, lyr_annulus4to5)
+  lyr_annulus4to5 <- st_difference(lyr_annulus4to5, lyr_annulus3to4)
+  lyr_annulus3to4 <- st_difference(lyr_annulus3to4, lyr_annulus2to3)
+  lyr_annulus2to3 <- st_difference(lyr_annulus2to3, lyr_annulus1to2)
+  lyr_annulus1to2 <- st_difference(lyr_annulus1to2, lyr_annulus0to1)
+  
+  # makes residence mask with 10 km buffer
+  monitor_mask <- lyr_monitor %>%
+    # transforms into projected CRS for buffering
+    st_transform(crs_projected) %>%
+    # makes 20,000 m (20 km) buffer
+    st_buffer(dist = 10000) %>%
+    # merges polygons into one
+    st_union() %>%
+    # transforms back to primary project CRS
+    st_transform(crs_nad83)
+  
+  # subsets wells to those within 10 km of the residence, i.e., w/in the mask
+  lyr_wells_preprod <- wells_sf_preprod %>% st_intersection(monitor_mask)
+  lyr_wells_prod <- wells_sf_prod %>% st_intersection(monitor_mask)
+```
+
+```{r map_060131002_plot, echo=FALSE}
+# makes map
+  map_2e <- ggplot() +
+    #geom_sf(data = lyr_wells_prod, color = "#FFFFFF") +
+    geom_sf(data = lyr_annulus0to1, color = "#FFFFFF", fill = "#FFFFFF") +
+    geom_sf(data = lyr_annulus1to2, color = "#E0E0E0", fill = "#E0E0E0") +
+    geom_sf(data = lyr_annulus2to3, color = "#FFFFFF", fill = "#FFFFFF") +
+    geom_sf(data = lyr_annulus3to4, color = "#E0E0E0", fill = "#E0E0E0") +
+    geom_sf(data = lyr_annulus4to5, color = "#FFFFFF", fill = "#FFFFFF") +
+    geom_sf(data = lyr_annulus5to6, color = "#E0E0E0", fill = "#E0E0E0") +
+    geom_sf(data = lyr_annulus6to7, color = "#FFFFFF", fill = "#FFFFFF") +
+    geom_sf(data = lyr_annulus7to8, color = "#E0E0E0", fill = "#E0E0E0") +
+    geom_sf(data = lyr_annulus8to9, color = "#FFFFFF", fill = "#FFFFFF") +
+    geom_sf(data = lyr_annulus9to10, color = "#E0E0E0", fill = "#E0E0E0") +
+    geom_sf(data = lyr_wells_prod, shape = 4, color = "#808080") +
+    geom_sf(data = lyr_wells_preprod, shape = 4, color = "#fc8d59") +
+    geom_sf(data = lyr_monitor, shape = 17, size = 2) +
+    annotation_scale(location = "bl", width_hint = 0.1) +
+    labs(title = "Oakley, CA (Monitor 060131002)",
+         subtitle = "Coordinates: 38.006311, -121.641918") +
+    theme_bw()
+```
+
+```{r map_060010003_prep, echo=FALSE, message=FALSE, warning=FALSE}
+# Map. Livermore, CA (Monitor 060010003)
+
+# sets up data
+  # layer - mock residence location
+  lyr_monitor <- aqs_sites %>% filter(site_id == "060010003")
+    
+  # intiates annuli as buffers
+  lyr_annulus0to1 <- lyr_monitor %>% 
+    st_transform(crs_projected) %>%
+    st_buffer(dist = 1000) %>%
+    st_transform(crs_nad83)
+  lyr_annulus1to2 <- lyr_monitor %>% 
+    st_transform(crs_projected) %>%
+    st_buffer(dist = 2000) %>%
+    st_transform(crs_nad83)
+  lyr_annulus2to3 <- lyr_monitor %>% 
+    st_transform(crs_projected) %>%
+    st_buffer(dist = 3000) %>%
+    st_transform(crs_nad83)
+  lyr_annulus3to4 <- lyr_monitor %>% 
+    st_transform(crs_projected) %>%
+    st_buffer(dist = 4000) %>%
+    st_transform(crs_nad83)
+  lyr_annulus4to5 <- lyr_monitor %>% 
+    st_transform(crs_projected) %>%
+    st_buffer(dist = 5000) %>%
+    st_transform(crs_nad83)
+  lyr_annulus5to6 <- lyr_monitor %>% 
+    st_transform(crs_projected) %>%
+    st_buffer(dist = 6000) %>%
+    st_transform(crs_nad83)
+  lyr_annulus6to7 <- lyr_monitor %>% 
+    st_transform(crs_projected) %>%
+    st_buffer(dist = 7000) %>%
+    st_transform(crs_nad83)
+  lyr_annulus7to8 <- lyr_monitor %>% 
+    st_transform(crs_projected) %>%
+    st_buffer(dist = 8000) %>%
+    st_transform(crs_nad83)
+  lyr_annulus8to9 <- lyr_monitor %>% 
+    st_transform(crs_projected) %>%
+    st_buffer(dist = 9000) %>%
+    st_transform(crs_nad83)
+  lyr_annulus9to10 <- lyr_monitor %>% 
+    st_transform(crs_projected) %>%
+    st_buffer(dist = 10000) %>%
+    st_transform(crs_nad83)
+  
+  # finalizes annuli by subtracting differences
+  lyr_annulus9to10 <- st_difference(lyr_annulus9to10, lyr_annulus8to9)
+  lyr_annulus8to9 <- st_difference(lyr_annulus8to9, lyr_annulus7to8)
+  lyr_annulus7to8 <- st_difference(lyr_annulus7to8, lyr_annulus6to7)
+  lyr_annulus6to7 <- st_difference(lyr_annulus6to7, lyr_annulus5to6)
+  lyr_annulus5to6 <- st_difference(lyr_annulus5to6, lyr_annulus4to5)
+  lyr_annulus4to5 <- st_difference(lyr_annulus4to5, lyr_annulus3to4)
+  lyr_annulus3to4 <- st_difference(lyr_annulus3to4, lyr_annulus2to3)
+  lyr_annulus2to3 <- st_difference(lyr_annulus2to3, lyr_annulus1to2)
+  lyr_annulus1to2 <- st_difference(lyr_annulus1to2, lyr_annulus0to1)
+  
+  # makes residence mask with 10 km buffer
+  monitor_mask <- lyr_monitor %>%
+    # transforms into projected CRS for buffering
+    st_transform(crs_projected) %>%
+    # makes 20,000 m (20 km) buffer
+    st_buffer(dist = 10000) %>%
+    # merges polygons into one
+    st_union() %>%
+    # transforms back to primary project CRS
+    st_transform(crs_nad83)
+  
+  # subsets wells to those within 10 km of the residence, i.e., w/in the mask
+  lyr_wells_preprod <- wells_sf_preprod %>% st_intersection(monitor_mask)
+  lyr_wells_prod <- wells_sf_prod %>% st_intersection(monitor_mask)
+```
+
+```{r map_060010003_plot, echo=FALSE}
+# makes map
+  map_2f <- ggplot() +
+    #geom_sf(data = lyr_wells_prod, color = "#FFFFFF") +
+    geom_sf(data = lyr_annulus0to1, color = "#FFFFFF", fill = "#FFFFFF") +
+    geom_sf(data = lyr_annulus1to2, color = "#E0E0E0", fill = "#E0E0E0") +
+    geom_sf(data = lyr_annulus2to3, color = "#FFFFFF", fill = "#FFFFFF") +
+    geom_sf(data = lyr_annulus3to4, color = "#E0E0E0", fill = "#E0E0E0") +
+    geom_sf(data = lyr_annulus4to5, color = "#FFFFFF", fill = "#FFFFFF") +
+    geom_sf(data = lyr_annulus5to6, color = "#E0E0E0", fill = "#E0E0E0") +
+    geom_sf(data = lyr_annulus6to7, color = "#FFFFFF", fill = "#FFFFFF") +
+    geom_sf(data = lyr_annulus7to8, color = "#E0E0E0", fill = "#E0E0E0") +
+    geom_sf(data = lyr_annulus8to9, color = "#FFFFFF", fill = "#FFFFFF") +
+    geom_sf(data = lyr_annulus9to10, color = "#E0E0E0", fill = "#E0E0E0") +
+    geom_sf(data = lyr_wells_prod, shape = 4, color = "#808080") +
+    geom_sf(data = lyr_wells_preprod, shape = 4, color = "#fc8d59") +
+    geom_sf(data = lyr_monitor, shape = 17, size = 2) +
+    annotation_scale(location = "bl", width_hint = 0.1) +
+    labs(title = "Livermore, CA (Monitor 060010003)",
+         subtitle = "Coordinates: 37.6849, -121.7659") +
+    theme_bw()
+```
+
+```{r}
+map_2 <- ggarrange(map_2a, map_2b, map_2c, map_2d, map_2e, map_2f,
+          nrow = 2, ncol = 3)
+map_2
+
+ggexport(map_2, filename = "../../output/figures/2020.02-monitor_exposure_examples.png",
+         height = 700, width = 1000)
+```

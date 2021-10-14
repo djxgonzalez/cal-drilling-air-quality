@@ -1,0 +1,261 @@
+---
+title: "Data Exploration: AQS NO/NOx/NOy"
+output: html_notebook
+---
+
+```{r setup_input_tidy, include=FALSE, warning=FALSE, message=FALSE}
+# sets up R environment
+source("../../code/0-setup/1-setup.R")
+
+# inputs data
+aqs_nox_1999_2019 <- 
+  readRDS("../../data/raw/us_epa/air_quality_system/nox/aqs_nox_1999_2019.rds")
+carb_basin <- 
+  st_read("../../data/raw/cal_epa/carb_air_basins/CaAirBasin.shp") %>%
+  st_transform(crs_nad83)
+wells_interim <- readRDS("../../data/interim/wells_interim.rds")
+
+# tidies data
+aqs_nox_sites <- aqs_nox_1999_2019 %>%
+  distinct(`Site Num`, .keep_all = TRUE) %>%
+  st_as_sf(coords = c("Longitude", "Latitude"), crs = crs_nad83)
+wells_buffer_drilling_10km <- wells_interim %>%
+  st_as_sf(coords = c("longitude", "latitude"), crs = crs_nad83) %>%
+  filter(preprod_1999_to_2019 == 1) %>%
+  st_transform(crs_projected) %>%
+  st_buffer(dist = 10000) %>%
+  st_union() %>%
+  st_transform(crs_nad83)
+wells_buffer_drilling_1km <- wells_interim %>%
+  st_as_sf(coords = c("longitude", "latitude"), crs = crs_nad83) %>%
+  filter(preprod_1999_to_2019 == 1) %>%
+  st_transform(crs_projected) %>%
+  st_buffer(dist = 1000) %>%
+  st_union() %>%
+  st_transform(crs_nad83)
+wells_buffer_production_10km <- wells_interim %>%
+  st_as_sf(coords = c("longitude", "latitude"), crs = crs_nad83) %>%
+  filter(prod_1999_to_2019 == 1) %>%
+  st_transform(crs_projected) %>%
+  st_buffer(dist = 10000) %>%
+  st_union() %>%
+  st_transform(crs_nad83)
+wells_buffer_production_1km <- wells_interim %>%
+  st_as_sf(coords = c("longitude", "latitude"), crs = crs_nad83) %>%
+  filter(prod_1999_to_2019 == 1) %>%
+  st_transform(crs_projected) %>%
+  st_buffer(dist = 1000) %>%
+  st_union() %>%
+  st_transform(crs_nad83)
+sites_near_drilling <- aqs_nox_sites %>% 
+  st_intersection(wells_buffer_drilling_10km)
+sites_near_production <- aqs_nox_sites %>% 
+  st_intersection(wells_buffer_production_10km)
+```
+
+## Spatial and Temporal Variation
+
+- n = `r aqs_nox_sites %>% nrow()` AQS sites monitor for hazardous volatile organic compounds (NOx).
+- n = `r aqs_nox_sites %>% st_intersection(wells_buffer_drilling_10km) %>% nrow()` NOx monitoring sites within 10 km of at least one drilling site, and n = `r aqs_nox_sites %>% st_intersection(wells_buffer_drilling_1km) %>% nrow()` are within 1 km
+- n = `r aqs_nox_sites %>% st_intersection(wells_buffer_production_10km) %>% nrow()` NOx monitoring sites within 10 km of at least one drilling site, and n = `r aqs_nox_sites %>% st_intersection(wells_buffer_production_1km) %>% nrow()` are within 1 km
+
+#### Plot. Map of NOx monitoring sites and well buffers
+
+```{r echo=FALSE, warning=FALSE}
+ggplot() +
+  geom_sf(data = carb_basin, fill = "white", color = "lightgray") +
+  geom_sf(data = wells_buffer_production_10km, 
+          fill = "gold3", color = NA, alpha = 0.2) + 
+  geom_sf(data = wells_buffer_production_1km,  
+          fill = "gold3", color = NA, alpha = 0.5) + 
+  geom_sf(data = wells_buffer_drilling_10km, 
+          fill = "purple3", color = NA, alpha = 0.2) + 
+  geom_sf(data = wells_buffer_drilling_1km,  
+          fill = "purple3", color = NA, alpha = 0.5) + 
+  geom_sf(data = aqs_nox_sites, shape = 2) +
+  xlim(-124.6, -114.0) + ylim(32.5, 42.1) +
+  theme_bw()
+```
+
+
+#### Plot. N observations (monitor-day) observations by year
+
+```{r echo=FALSE}
+aqs_nox_1999_2019 %>%
+  mutate(Year = as.factor(year(`Date Local`))) %>%
+  group_by(Year) %>%
+  summarize(n = n()) %>%
+  ggplot() +
+  geom_bar(aes(Year, n), stat = "identity") +
+  theme_classic()
+```
+
+#### Plot. N observations (monitor-day) observations by month, 1999-2019
+
+```{r echo=FALSE}
+aqs_nox_1999_2019 %>%
+  mutate(Month = as.factor(month(`Date Local`))) %>%
+  group_by(Month) %>%
+  summarize(n = n()) %>%
+  ggplot() +
+  geom_bar(aes(Month, n), stat = "identity") +
+  theme_classic()
+```
+
+#### Plot. N observations (monitor-day) observations by month-year
+
+```{r echo=FALSE}
+aqs_nox_1999_2019 %>%
+  mutate(Month_Year = as.Date(paste(month(`Date Local`), "01", year(`Date Local`),
+                                    sep = "/"),
+                              format = "%m/%d/%Y")) %>%
+  group_by(Month_Year) %>%
+  summarize(n = n()) %>%
+  ggplot() +
+  geom_bar(aes(Month_Year, n), stat = "identity") +
+  theme_classic()
+```
+
+
+#### Plot. N observations (monitor-day) observations by monitor
+
+```{r echo=FALSE}
+aqs_nox_1999_2019 %>%
+  group_by(`Site Num`) %>%
+  summarize(n = n()) %>%
+  ggplot() +
+  geom_bar(aes(reorder(`Site Num`, n), n), stat = "identity") +
+  theme_classic() +
+  coord_flip()
+```
+
+## Pollutant Types
+
+#### N observations (monitor-day) by pollutant type
+
+```{r echo=FALSE}
+aqs_nox_1999_2019 %>%
+  group_by(`Parameter Name`) %>%
+  summarize(n = n())
+```
+
+#### Plot. N observations (monitor-day) by pollutant type
+
+```{r echo=FALSE}
+aqs_nox_1999_2019 %>%
+  group_by(`Parameter Name`) %>%
+  summarize(n = n()) %>%
+  ggplot() +
+  geom_bar(aes(reorder(`Parameter Name`, n), n), stat = "identity") +
+  theme_classic() +
+  coord_flip()
+```
+
+
+## Potential Exposure
+
+### Monitors near drilling
+
+#### Plot. N observations (monitor-day) observations by month-year near drilling
+
+```{r echo=FALSE}
+aqs_nox_1999_2019 %>%
+  filter(`Site Num` %in% sites_near_drilling$`Site Num`) %>%
+  mutate(Month_Year = as.Date(paste(month(`Date Local`), "01", year(`Date Local`),
+                                    sep = "/"),
+                              format = "%m/%d/%Y")) %>%
+  group_by(Month_Year) %>%
+  summarize(n = n()) %>%
+  ggplot() +
+  geom_bar(aes(Month_Year, n), stat = "identity") +
+  theme_classic()
+```
+
+#### Plot. N observations (monitor-day) observations by monitor
+
+```{r echo=FALSE}
+aqs_nox_1999_2019 %>%
+  filter(`Site Num` %in% sites_near_drilling$`Site Num`) %>%
+  group_by(`Site Num`) %>%
+  summarize(n = n()) %>%
+  ggplot() +
+  geom_bar(aes(reorder(`Site Num`, n), n), stat = "identity") +
+  theme_classic() +
+  coord_flip()
+```
+
+#### Plot. N observations (monitor-day) by pollutant type near drilling
+
+```{r echo=FALSE}
+aqs_nox_1999_2019 %>%
+  filter(`Site Num` %in% sites_near_drilling$`Site Num`) %>%
+  group_by(`Parameter Name`) %>%
+  summarize(n = n()) %>%
+  ggplot() +
+  geom_bar(aes(reorder(`Parameter Name`, n), n), stat = "identity") +
+  theme_classic() +
+  coord_flip()
+```
+
+This suggests we'll have enough observations for relevant NOx (e.g., benzyne, formaldehyde) near drilling.
+
+### Monitors near production
+
+#### Plot. N observations (monitor-day) observations by month-year near production
+
+```{r echo=FALSE}
+aqs_nox_1999_2019 %>%
+  filter(`Site Num` %in% sites_near_production$`Site Num`) %>%
+  mutate(Month_Year = as.Date(paste(month(`Date Local`), "01", year(`Date Local`),
+                                    sep = "/"),
+                              format = "%m/%d/%Y")) %>%
+  group_by(Month_Year) %>%
+  summarize(n = n()) %>%
+  ggplot() +
+  geom_bar(aes(Month_Year, n), stat = "identity") +
+  theme_classic()
+```
+
+#### Plot. N observations (monitor-day) observations by monitor
+
+```{r echo=FALSE}
+aqs_nox_1999_2019 %>%
+  filter(`Site Num` %in% sites_near_production$`Site Num`) %>%
+  group_by(`Site Num`) %>%
+  summarize(n = n())
+```
+
+
+```{r echo=FALSE}
+aqs_nox_1999_2019 %>%
+  filter(`Site Num` %in% sites_near_production$`Site Num`) %>%
+  group_by(`Site Num`) %>%
+  summarize(n = n()) %>%
+  ggplot() +
+  geom_bar(aes(reorder(`Site Num`, n), n), stat = "identity") +
+  theme_classic() +
+  coord_flip()
+```
+
+#### Plot. N observations (monitor-day) by pollutant type near production
+
+```{r echo=FALSE}
+aqs_nox_1999_2019 %>%
+  filter(`Site Num` %in% sites_near_production$`Site Num`) %>%
+  group_by(`Parameter Name`) %>%
+  summarize(n = n())
+```
+
+
+```{r echo=FALSE}
+aqs_nox_1999_2019 %>%
+  filter(`Site Num` %in% sites_near_production$`Site Num`) %>%
+  group_by(`Parameter Name`) %>%
+  summarize(n = n()) %>%
+  ggplot() +
+  geom_bar(aes(reorder(`Parameter Name`, n), n), stat = "identity") +
+  theme_classic() +
+  coord_flip()
+```
+
+This suggests we'll also have enough observations for relevant NOx near production.

@@ -1,0 +1,303 @@
+---
+title: "Ch. 3: Oil production and ambient air quality in California"
+subtitle: "Results - Monthly IDW New Wells"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+source("../../code/0-setup/1-setup.R")
+library("lfe")
+```
+
+```{r data_import, include=FALSE}
+aqs_exposure_idw_preprod <- 
+  readRDS("../../data/interim/aqs_exposure_monthly_idw_nowind_preprod.rds")
+aqs_exposure_idw_prod <- 
+  readRDS("../../data/interim/aqs_exposure_monthly_idw_nowind_prod.rds")
+carb_basin <- 
+  st_read("../../data/raw/cal_epa/carb_air_basins/CaAirBasin.shp") %>%
+  st_transform(crs_nad83)
+wells_interim <- readRDS("../../data/interim/wells_interim.rds")
+cal_counties_raw <- 
+  st_read("../../data/raw/us_census/admin_shp/cal_counties.shp")
+```
+
+```{r data_tidying, include=FALSE}
+# bins IDW index into exposure quartiles
+source("../../code/2-exposure_assessment/3-make_idw_exposure_quantiles.R")
+aqs_exposure_idw_preprod <- makeExposureQuantiles(aqs_exposure_idw_preprod,
+                                                  "idw_index",
+                                                  "exp_quartile", 
+                                                  4)
+
+# appends CARB air basin to the dataset
+aqs_basins <- read_csv("../../data/interim/aqs_sites.csv") %>% 
+  st_as_sf(coords = c("longitude", "latitude"), crs = crs_nad83) %>%
+  st_join(carb_basin) %>%
+  as_tibble() %>%
+  select(site_id, NAME) %>%
+  rename(carb_basin = NAME)
+aqs_exposure_idw_preprod <- aqs_exposure_idw_preprod %>%
+  left_join(aqs_basins, by = "site_id")
+```
+
+## Pollutant: CO
+
+**Notes:**
+
+- We used data from `r aqs_exposure_idw_preprod %>% filter(monthly_mean_co > 0) %>% distinct(site_id) %>% nrow()` monitors and `r aqs_exposure_idw_preprod %>% filter(monthly_mean_co > 0) %>% distinct(site_id_month_year) %>% nrow()` monitor-months, from `r min(aqs_exposure_idw_preprod$month_year)` to `r max(aqs_exposure_idw_preprod$month_year)`
+- We droppped the `r aqs_exposure_idw_preprod %>% filter(monthly_mean_co <= 0) %>% nrow()` monitor-months that had nonsensical mean monthly CO concentrations of ≤ 0 µg/m^3, 
+
+#### Crude model
+
+```{r echo=FALSE}
+model_fit <- felm(monthly_mean_co ~ 
+                    as.factor(exp_quartile),
+                  data = subset(aqs_exposure_idw_preprod, 
+                                monthly_mean_co > 0))
+summary(model_fit)
+```
+
+#### FE for air basin:month + year
+
+```{r echo=FALSE}
+model_fit <- felm(monthly_mean_co ~ 
+                    as.factor(exp_quartile) 
+                  | factor(carb_basin):factor(month(month_year)) +
+                    factor(year(month_year)),
+                  data = subset(aqs_exposure_idw_preprod, 
+                                monthly_mean_co > 0))
+summary(model_fit)
+```
+
+#### FE for monitor + air basin-month + year
+
+```{r echo=FALSE}
+model_fit <- felm(monthly_mean_co ~
+                    as.factor(exp_quartile) 
+                  | factor(site_id) +
+                    factor(carb_basin):factor(month(month_year)) +
+                    factor(year(month_year)),
+                  data = subset(drop_na(aqs_exposure_idw_preprod,
+                                        monthly_mean_co), 
+                                monthly_mean_so2 > 0))
+summary(model_fit)
+```
+
+
+## Pollutant: NO2
+
+**Notes:**
+
+- We used data from `r aqs_exposure_idw_preprod %>% filter(monthly_mean_no2 > 0) %>% distinct(site_id) %>% nrow()` monitors and `r aqs_exposure_idw_preprod %>% filter(monthly_mean_no2 > 0) %>% distinct(site_id_month_year) %>% nrow()` monitor-months, from `r min(aqs_exposure_idw_preprod$month_year)` to `r max(aqs_exposure_idw_preprod$month_year)`
+- We droppped the `r aqs_exposure_idw_preprod %>% filter(monthly_mean_no2 <= 0) %>% nrow()` monitor-months that had nonsensical mean monthly NO2 concentrations of ≤ 0 µg/m^3, 
+
+#### Crude model
+
+```{r echo=FALSE}
+model_fit <- felm(monthly_mean_no2 ~ 
+                    as.factor(exp_quartile),
+                  data = subset(aqs_exposure_idw_preprod, 
+                                monthly_mean_no2 > 0))
+summary(model_fit)
+```
+
+#### FE for air basin:month + year
+
+```{r echo=FALSE}
+model_fit <- felm(monthly_mean_no2 ~ 
+                    as.factor(exp_quartile) 
+                  | factor(carb_basin):factor(month(month_year)) +
+                    factor(year(month_year)),
+                  data = subset(aqs_exposure_idw_preprod, 
+                                monthly_mean_no2 > 0))
+summary(model_fit)
+```
+
+#### FE for monitor + air basin-month + year
+
+```{r echo=FALSE}
+model_fit <- felm(monthly_mean_no2 ~
+                    as.factor(exp_quartile) 
+                  | factor(site_id) +
+                    factor(carb_basin):factor(month(month_year)) +
+                    factor(year(month_year)),
+                  data = subset(drop_na(aqs_exposure_idw_preprod,
+                                        monthly_mean_no2), 
+                                monthly_mean_so2 > 0))
+summary(model_fit)
+```
+
+
+## Pollutant: O3
+
+**Notes:**
+
+- We used data from `r aqs_exposure_idw_preprod %>% filter(monthly_mean_ozone > 0) %>% distinct(site_id) %>% nrow()` monitors and `r aqs_exposure_idw_preprod %>% filter(monthly_mean_ozone > 0) %>% distinct(site_id_month_year) %>% nrow()` monitor-months, from `r min(aqs_exposure_idw_preprod$month_year)` to `r max(aqs_exposure_idw_preprod$month_year)`
+- We droppped the `r aqs_exposure_idw_preprod %>% filter(monthly_mean_ozone <= 0) %>% nrow()` monitor-months that had nonsensical mean monthly O3 concentrations of ≤ 0 µg/m^3, 
+
+#### Crude model
+
+```{r echo=FALSE}
+model_fit <- felm(monthly_mean_ozone ~ 
+                    as.factor(exp_quartile),
+                  data = subset(aqs_exposure_idw_preprod, 
+                                monthly_mean_ozone > 0))
+summary(model_fit)
+```
+
+#### FE for air basin:month + year
+
+```{r echo=FALSE}
+model_fit <- felm(monthly_mean_ozone ~ 
+                    as.factor(exp_quartile) 
+                  | factor(carb_basin):factor(month(month_year)) +
+                    factor(year(month_year)),
+                  data = subset(aqs_exposure_idw_preprod, 
+                                monthly_mean_ozone > 0))
+summary(model_fit)
+```
+
+#### FE for monitor + air basin-month + year
+
+```{r echo=FALSE}
+model_fit <- felm(monthly_mean_ozone ~
+                    as.factor(exp_quartile) 
+                  | factor(site_id) +
+                    factor(carb_basin):factor(month(month_year)) +
+                    factor(year(month_year)),
+                  data = subset(drop_na(aqs_exposure_idw_preprod,
+                                        monthly_mean_ozone), 
+                                monthly_mean_ozone > 0))
+summary(model_fit)
+```
+
+## Pollutant: PM2.5
+
+**Notes:**
+
+- We used data from `r aqs_exposure_idw_preprod %>% filter(monthly_mean_pm2.5 > 0) %>% distinct(site_id) %>% nrow()` monitors and `r aqs_exposure_idw_preprod %>% filter(monthly_mean_pm2.5 > 0) %>% distinct(site_id_month_year) %>% nrow()` monitor-months, from `r min(aqs_exposure_idw_preprod$month_year)` to `r max(aqs_exposure_idw_preprod$month_year)`
+- We droppped the `r aqs_exposure_idw_preprod %>% filter(monthly_mean_pm2.5 <= 0) %>% nrow()` monitor-months that had nonsensical mean monthly PM2.5 concentrations of ≤ 0 µg/m^3, 
+
+#### Crude model
+
+```{r echo=FALSE}
+model_fit <- felm(monthly_mean_pm2.5 ~ 
+                    as.factor(exp_quartile),
+                  data = subset(aqs_exposure_idw_preprod, 
+                                monthly_mean_pm2.5 > 0))
+summary(model_fit)
+```
+
+#### FE for air basin:month + year
+
+```{r echo=FALSE}
+model_fit <- felm(monthly_mean_pm2.5 ~ 
+                    as.factor(exp_quartile) 
+                  | factor(carb_basin):factor(month(month_year)) +
+                    factor(year(month_year)),
+                  data = subset(aqs_exposure_idw_preprod, 
+                                monthly_mean_pm2.5 > 0))
+summary(model_fit)
+```
+
+#### FE for monitor + air basin-month + year
+
+```{r echo=FALSE}
+model_fit <- felm(monthly_mean_pm2.5 ~
+                    as.factor(exp_quartile) 
+                  | factor(site_id) +
+                    factor(carb_basin):factor(month(month_year)) +
+                    factor(year(month_year)),
+                  data = subset(drop_na(aqs_exposure_idw_preprod,
+                                        monthly_mean_pm2.5), 
+                                monthly_mean_pm2.5 > 0))
+summary(model_fit)
+```
+
+
+## Pollutant: PM10
+
+**Notes:**
+
+- We used data from `r aqs_exposure_idw_preprod %>% filter(monthly_mean_pm10 > 0) %>% distinct(site_id) %>% nrow()` monitors and `r aqs_exposure_idw_preprod %>% filter(monthly_mean_pm10 > 0) %>% distinct(site_id_month_year) %>% nrow()` monitor-months, from `r min(aqs_exposure_idw_preprod$month_year)` to `r max(aqs_exposure_idw_preprod$month_year)`
+- We droppped the `r aqs_exposure_idw_preprod %>% filter(monthly_mean_pm10 <= 0) %>% nrow()` monitor-months that had nonsensical mean monthly PM10 concentrations of ≤ 0 µg/m^3, 
+
+#### Crude model
+
+```{r echo=FALSE}
+model_fit <- felm(monthly_mean_pm10 ~ 
+                    as.factor(exp_quartile),
+                  data = subset(aqs_exposure_idw_preprod, 
+                                monthly_mean_pm10 > 0))
+summary(model_fit)
+```
+
+#### FE for air basin:month + year
+
+```{r echo=FALSE}
+model_fit <- felm(monthly_mean_pm10 ~ 
+                    as.factor(exp_quartile) 
+                  | factor(carb_basin):factor(month(month_year)) +
+                    factor(year(month_year)),
+                  data = subset(aqs_exposure_idw_preprod, 
+                                monthly_mean_pm10 > 0))
+summary(model_fit)
+```
+
+#### FE for monitor + air basin-month + year
+
+```{r echo=FALSE}
+model_fit <- felm(monthly_mean_pm10 ~
+                    as.factor(exp_quartile) 
+                  | factor(site_id) +
+                    factor(carb_basin):factor(month(month_year)) +
+                    factor(year(month_year)),
+                  data = subset(drop_na(aqs_exposure_idw_preprod,
+                                        monthly_mean_pm10), 
+                                monthly_mean_pm10 > 0))
+summary(model_fit)
+```
+
+## Pollutant: SO2
+
+**Notes:**
+
+- We used data from `r aqs_exposure_idw_preprod %>% filter(monthly_mean_so2 > 0) %>% distinct(site_id) %>% nrow()` monitors and `r aqs_exposure_idw_preprod %>% filter(monthly_mean_so2 > 0) %>% distinct(site_id_month_year) %>% nrow()` monitor-months, from `r min(aqs_exposure_idw_preprod$month_year)` to `r max(aqs_exposure_idw_preprod$month_year)`
+- We droppped the `r aqs_exposure_idw_preprod %>% filter(monthly_mean_so2 <= 0) %>% nrow()` monitor-months that had nonsensical mean monthly SO2 concentrations of ≤ 0 µg/m^3, 
+
+#### Crude model
+
+```{r echo=FALSE}
+model_fit <- felm(monthly_mean_so2 ~ 
+                    as.factor(exp_quartile),
+                  data = subset(aqs_exposure_idw_preprod, 
+                                monthly_mean_so2 > 0))
+summary(model_fit)
+```
+
+#### FE for air basin:month + year
+
+```{r echo=FALSE}
+model_fit <- felm(monthly_mean_so2 ~ 
+                    as.factor(exp_quartile) 
+                  | factor(carb_basin):factor(month(month_year)) +
+                    factor(year(month_year)),
+                  data = subset(aqs_exposure_idw_preprod, 
+                                monthly_mean_so2 > 0))
+summary(model_fit)
+```
+
+#### FE for monitor + air basin-month + year
+
+```{r echo=FALSE}
+model_fit <- felm(monthly_mean_so2 ~
+                    as.factor(exp_quartile) 
+                  | factor(site_id) +
+                    factor(carb_basin):factor(month(month_year)) +
+                    factor(year(month_year)),
+                  data = subset(drop_na(aqs_exposure_idw_preprod,
+                                        monthly_mean_so2), 
+                                monthly_mean_so2 > 0))
+summary(model_fit)
+```

@@ -1,0 +1,22 @@
+---
+title: "Memo: Examining missingness in the "
+output: html_notebook
+---
+
+## Purpose
+
+This memo examines missingness in air pollution data for our submission to STOTEN; reviewers asked us to assess missingness in the data.
+
+```{r setup, include=FALSE}
+source("../../code/0-setup/1-setup.R")
+```
+
+```{r data_input, include=FALSE}
+aqs_daily_annuli_exposure <-
+  readRDS("../../data/processed/aqs_daily_annuli_exposure.rds")
+```
+
+```{r echo=FALSE}
+
+```
+

@@ -1,0 +1,102 @@
+---
+title: "Memo - Wind direction randomization"
+output: html_notebook
+date: "01/27/2021"
+---
+
+## Objectives
+
+This memo examines whether randomization was successful 
+
+
+```{r setup, include=FALSE}
+source("../../code/0-setup/1-setup.R")
+```
+
+```{r input_data, include=FALSE}
+aqs_sites <- readRDS("../../data/interim/aqs_sites.rds")
+aqs_daily_annuli_random_wind <- 
+  readRDS("../../data/processed/aqs_daily_annuli_preproduction.rds") %>%
+  select(monitor_day, monitor_id, carb_basin, narr_wind_direction, narr_wind_speed) %>%
+  mutate(wind_direction_random = runif(1621240, 0, 360))
+```
+
+
+## Visualizations
+
+#### Plot. Distribution of random wind direction vector
+
+```{r echo=FALSE}
+aqs_daily_annuli_random_wind %>%
+  ggplot() +
+  geom_histogram(aes(wind_direction_random), binwidth = 1) +
+  theme_classic()
+```
+
+
+#### Plot. Scatterplot of random wind direction vs. observed upwind direction
+
+```{r echo=FALSE}
+aqs_daily_annuli_random_wind %>%
+  sample_n(100000) %>%
+  ggplot(aes(narr_wind_direction, wind_direction_random)) +
+  geom_point(alpha = 0.05) +
+  geom_smooth(formula = y ~ x, method = "lm", color = "red") +
+  theme_classic()
+```
+
+
+#### Model. Observed upwind direction ~ Random wind direction
+
+No association b/t the two
+
+```{r echo=FALSE}
+lm(narr_wind_direction ~ wind_direction_random, 
+   data = aqs_daily_annuli_random_wind) %>%
+  summary()
+```
+
+
+#### Plot. Distribution of random wind direction vector by CARB air basin
+
+```{r echo=FALSE}
+aqs_daily_annuli_random_wind %>%
+  ggplot() +
+  geom_histogram(aes(wind_direction_random), binwidth = 1) +
+  theme_classic() +
+  facet_wrap(~ carb_basin)
+```
+
+#### Plot. Distribution of random wind direction vector by monitor
+
+On a subset of randomly-selected monitors
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+random_monitors <- aqs_sites %>% sample_n(20) %>% select(monitor_id)
+aqs_daily_annuli_random_wind %>%
+  filter(monitor_id %in% random_monitors$monitor_id) %>%
+  ggplot() +
+  geom_histogram(aes(wind_direction_random), binwidth = 1) +
+  theme_classic() +
+  facet_wrap(~ monitor_id)
+```
+
+
+#### Plot. Scatterplot of random wind direction vs. observed upwind direction by montior
+
+On a subset of randomly-selected monitors, same subset as above
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+aqs_daily_annuli_random_wind %>%
+  filter(monitor_id %in% random_monitors$monitor_id) %>%
+  ggplot(aes(narr_wind_direction, wind_direction_random)) +
+  geom_point(alpha = 0.05) +
+  geom_smooth(formula = y ~ x, method = "lm", color = "red") +
+  theme_classic() +
+  facet_wrap(~ monitor_id)
+```
+
+*Note:* It looks liek we should do a nested randomization by monitor for monitors with few observations
+
+## Summary
+

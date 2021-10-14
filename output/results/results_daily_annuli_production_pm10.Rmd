@@ -1,0 +1,248 @@
+---
+title: "Results - Daily Annuli - Production - PM2.5"
+output: html_notebook
+---
+
+*add prelimn exposure assessments for prod volume*
+
+```{r setup, include=FALSE}
+source("../../code/0-setup/1-setup.R")
+library("lfe")
+```
+
+```{r input_data, include=FALSE}
+aqs_daily_annuli_exposure <- 
+  readRDS("../../data/processed/aqs_daily_annuli_exposure.rds") %>%
+  # makes units for analysis increments of 1,000 BOE
+  mutate(prod_volume_upwind_0to1km    = (prod_volume_upwind_0to1km / 1000),
+         prod_volume_upwind_1to2km    = (prod_volume_upwind_1to2km / 1000),
+         prod_volume_upwind_2to3km    = (prod_volume_upwind_2to3km / 1000),
+         prod_volume_upwind_3to4km    = (prod_volume_upwind_3to4km / 1000),
+         prod_volume_upwind_4to5km    = (prod_volume_upwind_4to5km / 1000),
+         prod_volume_upwind_5to6km    = (prod_volume_upwind_5to6km / 1000),
+         prod_volume_upwind_6to7km    = (prod_volume_upwind_6to7km / 1000),
+         prod_volume_upwind_7to8km    = (prod_volume_upwind_8to9km / 1000),
+         prod_volume_upwind_8to9km    = (prod_volume_upwind_8to9km / 1000),
+         prod_volume_upwind_9to10km   = (prod_volume_upwind_9to10km / 1000),
+         prod_volume_downwind_0to1km  = (prod_volume_downwind_0to1km / 1000),
+         prod_volume_downwind_1to2km  = (prod_volume_downwind_1to2km / 1000),
+         prod_volume_downwind_2to3km  = (prod_volume_downwind_2to3km / 1000),
+         prod_volume_downwind_3to4km  = (prod_volume_downwind_3to4km / 1000),
+         prod_volume_downwind_4to5km  = (prod_volume_downwind_4to5km / 1000),
+         prod_volume_downwind_5to6km  = (prod_volume_downwind_5to6km / 1000),
+         prod_volume_downwind_6to7km  = (prod_volume_downwind_6to7km / 1000),
+         prod_volume_downwind_7to8km  = (prod_volume_downwind_8to9km / 1000),
+         prod_volume_downwind_8to9km  = (prod_volume_downwind_8to9km / 1000),
+         prod_volume_downwind_9to10km = (prod_volume_downwind_9to10km / 1000),
+         prod_volume_nowind_0to1km    = (prod_volume_nowind_0to1km / 1000),
+         prod_volume_nowind_1to2km    = (prod_volume_nowind_1to2km / 1000),
+         prod_volume_nowind_2to3km    = (prod_volume_nowind_2to3km / 1000),
+         prod_volume_nowind_3to4km    = (prod_volume_nowind_3to4km / 1000),
+         prod_volume_nowind_4to5km    = (prod_volume_nowind_4to5km / 1000),
+         prod_volume_nowind_5to6km    = (prod_volume_nowind_5to6km / 1000),
+         prod_volume_nowind_6to7km    = (prod_volume_nowind_6to7km / 1000),
+         prod_volume_nowind_7to8km    = (prod_volume_nowind_8to9km / 1000),
+         prod_volume_nowind_8to9km    = (prod_volume_nowind_8to9km / 1000),
+         prod_volume_nowind_9to10km   = (prod_volume_nowind_9to10km / 1000))
+```
+
+```{r setup_data, include=FALSE}
+data_in <- aqs_daily_annuli_exposure %>%
+  filter(pm10_mean >= 0) %>%
+  filter(year %in% c(2006:2019))
+```
+
+#### Adjusted linear model without FE
+
+```{r echo=FALSE}
+model_fit <- felm(pm10_mean ~ 
+                    prod_volume_upwind_0to1km +
+                    prod_volume_upwind_1to2km +
+                    prod_volume_upwind_2to3km +
+                    prod_volume_upwind_3to4km +
+                    prod_volume_upwind_4to5km +
+                    #prod_volume_upwind_5to6km +
+                    #prod_volume_upwind_6to7km +
+                    #prod_volume_upwind_7to8km +
+                    #prod_volume_upwind_8to9km +
+                    #prod_volume_upwind_9to10km +
+                    prod_volume_downwind_0to1km +
+                    prod_volume_downwind_1to2km +
+                    prod_volume_downwind_2to3km +
+                    prod_volume_downwind_3to4km +
+                    prod_volume_downwind_4to5km +
+                    #prod_volume_downwind_5to6km +
+                    #prod_volume_downwind_6to7km +
+                    #prod_volume_downwind_7to8km +
+                    #prod_volume_downwind_8to9km +
+                    #prod_volume_downwind_9to10km +
+                    n_plume +
+                    narr_precip + 
+                    narr_temp +
+                    narr_wind_speed
+                  | day_of_week,
+                  data = data_in)
+summary(model_fit)
+```
+
+#### Adjusted linear model with month and basin:year FE
+
+```{r echo=FALSE}
+model_fit <- felm(pm10_mean ~ 
+                    prod_volume_upwind_0to1km +
+                    prod_volume_upwind_1to2km +
+                    prod_volume_upwind_2to3km +
+                    prod_volume_upwind_3to4km +
+                    prod_volume_upwind_4to5km +
+                    #prod_volume_upwind_5to6km +
+                    #prod_volume_upwind_6to7km +
+                    #prod_volume_upwind_7to8km +
+                    #prod_volume_upwind_8to9km +
+                    #prod_volume_upwind_9to10km +
+                    prod_volume_downwind_0to1km +
+                    prod_volume_downwind_1to2km +
+                    prod_volume_downwind_2to3km +
+                    prod_volume_downwind_3to4km +
+                    prod_volume_downwind_4to5km +
+                    #prod_volume_downwind_5to6km +
+                    #prod_volume_downwind_6to7km +
+                    #prod_volume_downwind_7to8km +
+                    #prod_volume_downwind_8to9km +
+                    #prod_volume_downwind_9to10km +
+                    n_plume +
+                    narr_precip + 
+                    narr_temp +
+                    narr_wind_speed
+                  | day_of_week + 
+                    factor(carb_basin):factor(month) +
+                    factor(carb_basin):factor(year),
+                  data = data_in)
+summary(model_fit)
+```
+
+
+#### Adjust linear model with monitor + month + basin:year FE
+
+**Primary analysis**
+
+```{r echo=FALSE}
+model_fit <- felm(pm10_mean ~ 
+                    prod_volume_upwind_0to1km +
+                    prod_volume_upwind_1to2km +
+                    prod_volume_upwind_2to3km +
+                    prod_volume_upwind_3to4km +
+                    prod_volume_upwind_4to5km +
+                    #prod_volume_upwind_5to6km +
+                    #prod_volume_upwind_6to7km +
+                    #prod_volume_upwind_7to8km +
+                    #prod_volume_upwind_8to9km +
+                    #prod_volume_upwind_9to10km +
+                    prod_volume_downwind_0to1km +
+                    prod_volume_downwind_1to2km +
+                    prod_volume_downwind_2to3km +
+                    prod_volume_downwind_3to4km +
+                    prod_volume_downwind_4to5km +
+                    #prod_volume_downwind_5to6km +
+                    #prod_volume_downwind_6to7km +
+                    #prod_volume_downwind_7to8km +
+                    #prod_volume_downwind_8to9km +
+                    #prod_volume_downwind_9to10km +
+                    n_plume +
+                    narr_precip + 
+                    narr_temp +
+                    narr_wind_speed
+                  | day_of_week + 
+                    factor(monitor_id):factor(month) +
+                    factor(carb_basin):factor(year) +
+                    monitor_id,
+                  data = data_in)
+summary(model_fit)
+```
+
+
+**Table**
+
+```{r echo=FALSE}
+model_output <-
+  tibble(
+    distance  = c("0-1", "1-2", "2-3", "3-4", "4-5",
+                  "0-1", "1-2", "2-3", "3-4", "4-5"),
+    direction = c("Upwind", "Upwind", "Upwind", "Upwind", "Upwind",
+                  "Downwind", "Downwind", "Downwind", "Downwind", "Downwind"),
+    point_est = coef(model_fit)[c(1:10)],
+    ci_lower  = confint(model_fit)[c(1:10)],
+    ci_upper  = confint(model_fit)[15:24])
+write_csv(model_output, "point_estimates/daily_annuli_production_pm10.csv")
+model_output
+```
+
+**Figure**
+
+```{r echo=FALSE, warning = FALSE}
+model_output %>%
+  ggplot() + 
+  geom_pointrange(aes(x = distance, y = point_est, 
+                      ymin = ci_lower, ymax = ci_upper,
+                      color = direction),
+                  alpha = 0.5) + 
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  labs(x = "Distance to well (km)", 
+       y = "Marginal change in daily PM2.5 conc. (µg/m^3)") +
+  theme_classic()
+```
+
+
+## No wind
+
+#### Adjust linear model with monitor + month + basin:year FE
+
+```{r echo=FALSE}
+model_fit <- felm(pm10_mean ~ 
+                    prod_volume_nowind_0to1km +
+                    prod_volume_nowind_1to2km +
+                    prod_volume_nowind_2to3km +
+                    prod_volume_nowind_3to4km +
+                    prod_volume_nowind_4to5km +
+                    prod_volume_nowind_5to6km +
+                    prod_volume_nowind_6to7km +
+                    prod_volume_nowind_7to8km +
+                    #prod_volume_nowind_8to9km +
+                    #prod_volume_nowind_9to10km +
+                    n_plume +
+                    narr_precip + 
+                    narr_temp +
+                    narr_wind_speed
+                  | day_of_week + 
+                    factor(monitor_id):factor(month) +
+                    factor(carb_basin):factor(year) +
+                    monitor_id,
+                  data = data_in)
+summary(model_fit)
+```
+
+**Table**
+
+```{r echo=FALSE}
+model_output <-
+  tibble(
+    distance  = c("0-1", "1-2", "2-3", "3-4", "4-5"),
+    point_est = coef(model_fit)[1:5],
+    ci_lower  = confint(model_fit)[1:5],
+    ci_upper  = confint(model_fit)[13:17])
+write_csv(model_output, "point_estimates/daily_annuli_production_pm10_nowind.csv")
+model_output
+```
+
+**Figure**
+
+```{r echo=FALSE, warning = FALSE}
+model_output %>%
+  ggplot() + 
+  geom_pointrange(aes(x = distance, y = point_est, 
+                      ymin = ci_lower, ymax = ci_upper),
+                  alpha = 0.5) + 
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  labs(x = "Distance to well (km)", 
+       y = "Marginal change in daily PM2.5 conc. (µg/m^3)") +
+  theme_classic()
+```

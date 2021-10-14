@@ -1,0 +1,256 @@
+---
+title: "Results - Daily Annuli - Preproduction - SO2"
+output: html_notebook
+---
+
+*add prelimn exposure assessments for prod volume*
+
+```{r setup, include=FALSE}
+source("../../code/0-setup/1-setup.R")
+library("lfe")
+```
+
+```{r input_data, include=FALSE}
+aqs_daily_annuli_exposure <- 
+  readRDS("../../data/processed/aqs_daily_annuli_exposure.rds")
+```
+
+```{r setup_data, include=FALSE}
+data_in <- aqs_daily_annuli_exposure %>%
+  filter(so2_max >= 0)
+```
+
+## Primary results
+
+#### Adjusted linear regression model without FE
+
+```{r echo=FALSE}
+model_fit <- felm(so2_max ~ 
+                    preprod_count_uw_0to1km +
+                    preprod_count_uw_1to2km +
+                    preprod_count_uw_2to3km +
+                    preprod_count_uw_3to4km +
+                    preprod_count_uw_4to5km +
+                    preprod_count_uw_5to6km +
+                    preprod_count_uw_6to7km +
+                    preprod_count_uw_7to8km +
+                    preprod_count_uw_8to9km +
+                    preprod_count_uw_9to10km +
+                    preprod_count_dw_0to1km +
+                    preprod_count_dw_1to2km +
+                    preprod_count_dw_2to3km +
+                    preprod_count_dw_3to4km +
+                    preprod_count_dw_4to5km +
+                    preprod_count_dw_5to6km +
+                    preprod_count_dw_6to7km +
+                    preprod_count_dw_7to8km +
+                    preprod_count_dw_8to9km +
+                    preprod_count_dw_9to10km +
+                    narr_precip + 
+                    narr_temp +
+                    narr_wind_speed 
+                  | day_of_week,
+                  data = data_in)
+summary(model_fit)
+```
+
+
+#### Adjusted linear regression model with month + basin:year FE
+
+```{r echo=FALSE}
+model_fit <- felm(so2_max ~ 
+                    preprod_count_uw_0to1km +
+                    preprod_count_uw_1to2km +
+                    preprod_count_uw_2to3km +
+                    preprod_count_uw_3to4km +
+                    preprod_count_uw_4to5km +
+                    preprod_count_uw_5to6km +
+                    preprod_count_uw_6to7km +
+                    preprod_count_uw_7to8km +
+                    preprod_count_uw_8to9km +
+                    preprod_count_uw_9to10km +
+                    preprod_count_dw_0to1km +
+                    preprod_count_dw_1to2km +
+                    preprod_count_dw_2to3km +
+                    preprod_count_dw_3to4km +
+                    preprod_count_dw_4to5km +
+                    preprod_count_dw_5to6km +
+                    preprod_count_dw_6to7km +
+                    preprod_count_dw_7to8km +
+                    preprod_count_dw_8to9km +
+                    preprod_count_dw_9to10km +
+                    narr_precip + 
+                    narr_temp +
+                    narr_wind_speed
+                  | day_of_week +
+                    factor(carb_basin):factor(month) +
+                    factor(carb_basin):factor(year),
+                  data = data_in)
+summary(model_fit)
+```
+
+
+#### Adjusted linear regression model with monitor + month + basin:year FE
+
+**Primary result**
+
+```{r echo=FALSE}
+model_fit <- felm(so2_max ~ 
+                    preprod_count_uw_0to1km +
+                    preprod_count_uw_1to2km +
+                    preprod_count_uw_2to3km +
+                    preprod_count_uw_3to4km +
+                    preprod_count_uw_4to5km +
+                    preprod_count_uw_5to6km +
+                    preprod_count_uw_6to7km +
+                    preprod_count_uw_7to8km +
+                    preprod_count_uw_8to9km +
+                    preprod_count_uw_9to10km +
+                    preprod_count_dw_0to1km +
+                    preprod_count_dw_1to2km +
+                    preprod_count_dw_2to3km +
+                    preprod_count_dw_3to4km +
+                    preprod_count_dw_4to5km +
+                    preprod_count_dw_5to6km +
+                    preprod_count_dw_6to7km +
+                    preprod_count_dw_7to8km +
+                    preprod_count_dw_8to9km +
+                    preprod_count_dw_9to10km +
+                    narr_precip + 
+                    narr_temp +
+                    narr_wind_speed
+                  | day_of_week + 
+                    factor(monitor_id):factor(month) +
+                    factor(monitor_id):factor(year) +
+                    monitor_id,
+                  data = data_in)
+summary(model_fit)
+```
+
+
+**Table**
+
+```{r echo=FALSE}
+model_output <-
+  tibble(
+    distance  = c("0-1", "1-2", "2-3", "3-4", "4-5",
+                  "5-6", "6-7", "7-8", "8-9", "9-10",
+                  "0-1", "1-2", "2-3", "3-4", "4-5",
+                  "5-6", "6-7", "7-8", "8-9", "9-10"),
+    direction = c("Upwind", "Upwind", "Upwind", "Upwind", "Upwind",
+                  "Upwind", "Upwind", "Upwind", "Upwind", "Upwind",
+                  "Downwind", "Downwind", "Downwind", "Downwind", "Downwind",
+                  "Downwind", "Downwind", "Downwind", "Downwind", "Downwind"),
+    point_est = coef(model_fit)[1:20],
+    ci_lower  = confint(model_fit)[1:20],
+    ci_upper  = confint(model_fit)[24:43])
+#write_csv(model_output, "point_estimates/daily_annuli_preproduction_so2.csv")
+model_output
+```
+
+**Figure**
+
+```{r echo=FALSE, warning = FALSE}
+model_output %>%
+  ggplot() + 
+  geom_pointrange(aes(x = distance, y = point_est, 
+                      ymin = ci_lower, ymax = ci_upper,
+                      color = direction)) + 
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  labs(x = "Distance to well (km)", 
+       y = "Marginal change in daily SO2 conc. (µg/m^3)") +
+  theme_classic()
+```
+
+
+
+#### Adjusted linear regression model with monitor + month + basin:year FE and polynomial terms
+
+```{r echo=FALSE}
+model_fit <- felm(so2_max ~ 
+                    preprod_count_uw_0to1km +
+                    poly(preprod_count_uw_1to2km, 2) +
+                    poly(preprod_count_uw_2to3km, 2) +
+                    poly(preprod_count_uw_3to4km, 2) +
+                    poly(preprod_count_uw_4to5km, 2) +
+                    poly(preprod_count_uw_5to6km, 2) +
+                    poly(preprod_count_uw_6to7km, 2) +
+                    poly(preprod_count_uw_7to8km, 2) +
+                    poly(preprod_count_uw_8to9km, 2) +
+                    poly(preprod_count_uw_9to10km, 2) +
+                    preprod_count_dw_0to1km +
+                    poly(preprod_count_dw_1to2km, 2) +
+                    poly(preprod_count_dw_2to3km, 2) +
+                    poly(preprod_count_dw_3to4km, 2) +
+                    poly(preprod_count_dw_4to5km, 2) +
+                    poly(preprod_count_dw_5to6km, 2) +
+                    poly(preprod_count_dw_6to7km, 2) +
+                    poly(preprod_count_dw_7to8km, 2) +
+                    poly(preprod_count_dw_8to9km , 2) +
+                    poly(preprod_count_dw_9to10km, 2) +
+                    n_plume +
+                    narr_precip + 
+                    narr_temp +
+                    narr_wind_speed
+                  | day_of_week + 
+                    factor(month) +
+                    factor(carb_basin):factor(year) +
+                    monitor_id,
+                  data = data_in)
+summary(model_fit)
+```
+
+
+## No wind
+
+#### Adjust linear model with monitor + month + basin:year FE
+
+```{r echo=FALSE}
+model_fit <- felm(so2_max ~ 
+                    prod_volume_nowind_0to1km +
+                    prod_volume_nowind_1to2km +
+                    prod_volume_nowind_2to3km +
+                    prod_volume_nowind_3to4km +
+                    prod_volume_nowind_4to5km +
+                    prod_volume_nowind_5to6km +
+                    prod_volume_nowind_6to7km +
+                    prod_volume_nowind_7to8km +
+                    #prod_volume_nowind_8to9km +
+                    #prod_volume_nowind_9to10km +
+                    narr_precip + 
+                    narr_temp +
+                    narr_wind_speed
+                  | day_of_week + 
+                    factor(monitor_id):factor(month) +
+                    factor(carb_basin):factor(year) +
+                    monitor_id,
+                  data = data_in)
+summary(model_fit)
+```
+
+**Table**
+
+```{r echo=FALSE}
+model_output <-
+  tibble(
+    distance  = c("0-1", "1-2", "2-3", "3-4", "4-5"),
+    point_est = coef(model_fit)[1:5],
+    ci_lower  = confint(model_fit)[1:5],
+    ci_upper  = confint(model_fit)[12:16])
+write_csv(model_output, "point_estimates/daily_annuli_preproduction_so2_nowind.csv")
+model_output
+```
+
+**Figure**
+
+```{r echo=FALSE, warning = FALSE}
+model_output %>%
+  ggplot() + 
+  geom_pointrange(aes(x = distance, y = point_est, 
+                      ymin = ci_lower, ymax = ci_upper),
+                  alpha = 0.5) + 
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  labs(x = "Distance to well (km)", 
+       y = "Marginal change in daily SO2") +
+  theme_classic()
+```

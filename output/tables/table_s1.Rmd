@@ -1,0 +1,444 @@
+---
+title: "Output - Table S1"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+source("../../code/0-setup/1-setup.R")
+library("table1")
+```
+
+```{r data_input, include=FALSE}
+aqs_sites <- readRDS("../../data/interim/aqs_sites.rds") %>%
+  st_as_sf()
+cal_urban <- readRDS("../../data/interim/cal_urban.rds")
+carb_basins <- 
+  st_read("../../data/raw/cal_epa/carb_air_basins/CaAirBasin.shp") %>%
+  st_transform(crs_nad83)
+calgem_production <-
+  readRDS("../../data/interim/calgem_production_monthly.rds") %>%
+  mutate(latlong_id = as.factor(paste(longitude, latitude, sep = "-")))
+wells_interim <- readRDS("../../data/interim/wells_interim.rds")
+```
+
+```{r, include=FALSE}
+aqs_sites_buffer_10km <- aqs_sites %>%
+  st_transform(crs_projected) %>%
+  st_buffer(dist = 10000) %>%  # makes 10 km buffer
+  st_union() %>%  # merges overlapping polygons
+  st_transform(crs_nad83)  # converts back to unprojected NAD83 CRS for plotting
+```
+
+```{r, include=FALSE}
+wells_prod <- calgem_production %>% 
+  drop_na(longitude) %>%
+  filter(prod_month_year >= as.Date("2006-01-01")) %>%
+  filter(total_oil_gas_produced > 0) %>%
+  distinct(longitude, latitude, .keep_all = TRUE) %>%
+  mutate(latlong_id = as.factor(paste(longitude, latitude, sep = "-"))) %>%
+  st_as_sf(coords = c("longitude", "latitude"), crs = crs_nad83)
+wells_preprod <- wells_interim %>% 
+  filter(preprod_2006_to_2019 == 1) %>%
+  st_as_sf(coords = c("longitude", "latitude"), crs = crs_nad83)
+```
+
+
+### Preproduction well count
+
+**n wells near monitors**
+
+```{r echo=FALSE}
+d <- wells_preprod %>%
+  st_intersection(aqs_sites_buffer_10km) %>%
+  nrow()
+d
+round(((d / nrow(wells_preprod)) * 100), digits = 1)
+```
+
+**n wells in urban areas**
+
+```{r echo=FALSE}
+d <- wells_preprod %>%
+  st_intersection(st_union(cal_urban)) %>%
+  nrow()
+d
+round(((d / nrow(wells_preprod)) * 100), digits = 1)
+```
+
+**n wells by air basins**
+
+Sacramento Valley
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+basin <- carb_basins %>%
+  as_tibble() %>%
+  filter(NAME == "Sacramento Valley") %>%
+  st_as_sf()
+d <- wells_preprod %>%
+  st_intersection(basin) %>%
+  nrow()
+d
+round(((d / nrow(wells_preprod)) * 100), digits = 1)
+```
+
+San Joaquin Valley
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+basin <- carb_basins %>%
+  as_tibble() %>%
+  filter(NAME == "San Joaquin Valley") %>%
+  st_as_sf()
+d <- wells_preprod %>%
+  st_intersection(basin) %>%
+  nrow()
+d
+round(((d / nrow(wells_preprod)) * 100), digits = 1)
+```
+
+South Central Coast
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+basin <- carb_basins %>%
+  as_tibble() %>%
+  filter(NAME == "South Central Coast") %>%
+  st_as_sf()
+d <- wells_preprod %>%
+  st_intersection(basin) %>%
+  nrow()
+d
+round(((d / nrow(wells_preprod)) * 100), digits = 1)
+```
+
+South Coast
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+basin <- carb_basins %>%
+  as_tibble() %>%
+  filter(NAME == "South Coast") %>%
+  st_as_sf()
+d <- wells_preprod %>%
+  st_intersection(basin) %>%
+  nrow()
+d
+round(((d / nrow(wells_preprod)) * 100), digits = 1)
+```
+
+**n wells by time**
+
+2006-2009
+
+```{r echo=FALSE}
+int_2006_2009 <- interval(ymd(20060101), ymd(20091231))
+d <- wells_preprod %>%
+  mutate(overlaps = 
+           case_when(int_overlaps(int_2006_2009, preprod_exp_interval1) ~ 1,
+                     int_overlaps(int_2006_2009, preprod_exp_interval1) ~ 1)) %>%
+  filter(overlaps == 1) %>%
+  nrow()
+d
+round(((d / nrow(wells_preprod)) * 100), digits = 1)
+```
+
+2010-2014
+
+```{r echo=FALSE}
+int_2006_2009 <- interval(ymd(20100101), ymd(20141231))
+d <- wells_preprod %>%
+  mutate(overlaps = 
+           case_when(int_overlaps(int_2006_2009, preprod_exp_interval1) ~ 1,
+                     int_overlaps(int_2006_2009, preprod_exp_interval1) ~ 1)) %>%
+  filter(overlaps == 1) %>%
+  nrow()
+d
+round(((d / nrow(wells_preprod)) * 100), digits = 1)
+```
+
+2015-2019
+
+```{r echo=FALSE}
+int_2006_2009 <- interval(ymd(20150101), ymd(20191231))
+d <- wells_preprod %>%
+  mutate(overlaps = 
+           case_when(int_overlaps(int_2006_2009, preprod_exp_interval1) ~ 1,
+                     int_overlaps(int_2006_2009, preprod_exp_interval1) ~ 1)) %>%
+  filter(overlaps == 1) %>%
+  nrow()
+d
+round(((d / nrow(wells_preprod)) * 100), digits = 1)
+```
+
+### Production wells
+
+**n wells near monitors**
+
+```{r echo=FALSE}
+d <- wells_prod %>%
+  st_intersection(aqs_sites_buffer_10km) %>%
+  nrow()
+d
+round(((d / nrow(wells_prod)) * 100), digits = 1)
+```
+
+**n wells in urban areas**
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+d <- wells_prod %>%
+  st_intersection(st_union(cal_urban)) %>%
+  nrow()
+d
+round(((d / nrow(wells_prod)) * 100), digits = 1)
+```
+
+**n wells by air basins**
+
+Sacramento Valley
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+basin <- carb_basins %>%
+  as_tibble() %>%
+  filter(NAME == "Sacramento Valley") %>%
+  st_as_sf()
+d <- wells_prod %>%
+  st_intersection(basin) %>%
+  nrow()
+d
+round(((d / nrow(wells_prod)) * 100), digits = 1)
+```
+
+San Joaquin Valley
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+basin <- carb_basins %>%
+  as_tibble() %>%
+  filter(NAME == "San Joaquin Valley") %>%
+  st_as_sf()
+d <- wells_prod %>%
+  st_intersection(basin) %>%
+  nrow()
+d
+round(((d / nrow(wells_prod)) * 100), digits = 1)
+```
+
+South Central Coast
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+basin <- carb_basins %>%
+  as_tibble() %>%
+  filter(NAME == "South Central Coast") %>%
+  st_as_sf()
+d <- wells_prod %>%
+  st_intersection(basin) %>%
+  nrow()
+d
+round(((d / nrow(wells_prod)) * 100), digits = 1)
+```
+
+South Coast
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+basin <- carb_basins %>%
+  as_tibble() %>%
+  filter(NAME == "South Coast") %>%
+  st_as_sf()
+d <- wells_prod %>%
+  st_intersection(basin) %>%
+  nrow()
+d
+round(((d / nrow(wells_prod)) * 100), digits = 1)
+```
+
+**n wells by time**
+
+2006-2009
+
+```{r echo=FALSE}
+d <- calgem_production %>%
+  filter(total_oil_gas_produced > 0) %>%
+  filter(prod_month_year >= as.Date("2006-01-01") &
+           prod_month_year <= as.Date("2009-12-31")) %>%
+  distinct(longitude, latitude) %>%
+  nrow()
+d
+round(((d / nrow(wells_prod)) * 100), digits = 1)
+```
+
+2010-2014
+
+```{r echo=FALSE}
+d <- calgem_production %>%
+  filter(total_oil_gas_produced > 0) %>%
+  filter(prod_month_year >= as.Date("2010-01-01") &
+           prod_month_year <= as.Date("2014-12-31")) %>%
+  distinct(longitude, latitude) %>%
+  nrow()
+d
+round(((d / nrow(wells_prod)) * 100), digits = 1)
+```
+
+2015-2019
+
+```{r echo=FALSE}
+d <- calgem_production %>%
+  filter(total_oil_gas_produced > 0) %>%
+  filter(prod_month_year >= as.Date("2015-01-01") &
+           prod_month_year <= as.Date("2019-12-31")) %>%
+  distinct(longitude, latitude) %>%
+  nrow()
+d
+round(((d / nrow(wells_prod)) * 100), digits = 1)
+```
+
+
+### Production volume
+
+**sum of volume near monitors**
+
+```{r echo=FALSE}
+t <- 3751850237
+w <- wells_prod %>%
+  st_intersection(aqs_sites_buffer_10km)
+p <- calgem_production %>% 
+  filter(latlong_id %in% w$latlong_id)
+d <- sum(p$total_oil_gas_produced)
+d
+round(((d / t ) * 100), digits = 1)
+```
+
+**n wells in urban areas**
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+w <- wells_prod %>%
+  st_intersection(st_union(cal_urban))
+p <- calgem_production %>% 
+  filter(prod_month_year >= as.Date("2006-01-01")) %>%
+  filter(latlong_id %in% w$latlong_id)
+d <- sum(p$total_oil_gas_produced)
+d
+round(((d / t ) * 100), digits = 1)
+```
+
+**n wells by air basins**
+
+Sacramento Valley
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+basin <- carb_basins %>%
+  as_tibble() %>%
+  filter(NAME == "Sacramento Valley") %>%
+  st_as_sf()
+w <- wells_prod %>%
+  st_intersection(basin)
+p <- calgem_production %>% 
+  filter(prod_month_year >= as.Date("2006-01-01")) %>%
+  filter(latlong_id %in% w$latlong_id)
+d <- sum(p$total_oil_gas_produced)
+d
+round(((d / t ) * 100), digits = 1)
+```
+
+San Joaquin Valley
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+basin <- carb_basins %>%
+  as_tibble() %>%
+  filter(NAME == "San Joaquin Valley") %>%
+  st_as_sf()
+w <- wells_prod %>%
+  st_intersection(basin)
+p <- calgem_production %>% 
+  filter(prod_month_year >= as.Date("2006-01-01")) %>%
+  filter(latlong_id %in% w$latlong_id)
+d <- sum(p$total_oil_gas_produced)
+d
+round(((d / t ) * 100), digits = 1)
+```
+
+South Central Coast
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+basin <- carb_basins %>%
+  as_tibble() %>%
+  filter(NAME == "South Central Coast") %>%
+  st_as_sf()
+w <- wells_prod %>%
+  st_intersection(basin)
+p <- calgem_production %>% 
+  filter(prod_month_year >= as.Date("2006-01-01")) %>%
+  filter(latlong_id %in% w$latlong_id)
+d <- sum(p$total_oil_gas_produced)
+d
+round(((d / t ) * 100), digits = 1)
+```
+
+South Coast
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+basin <- carb_basins %>%
+  as_tibble() %>%
+  filter(NAME == "South Coast") %>%
+  st_as_sf()
+w <- wells_prod %>%
+  st_intersection(basin)
+p <- calgem_production %>% 
+  filter(prod_month_year >= as.Date("2006-01-01")) %>%
+  filter(latlong_id %in% w$latlong_id)
+d <- sum(p$total_oil_gas_produced)
+d
+round(((d / t ) * 100), digits = 1)
+```
+
+**n wells by time**
+
+2006-2009
+
+```{r echo=FALSE}
+d <- calgem_production %>%
+  filter(total_oil_gas_produced > 0) %>%
+  filter(prod_month_year >= as.Date("2006-01-01") &
+           prod_month_year <= as.Date("2009-12-31")) %>%
+  distinct(longitude, latitude, .keep_all = TRUE)
+p <- calgem_production %>% 
+  filter(total_oil_gas_produced > 0) %>%
+  filter(prod_month_year >= as.Date("2006-01-01") &
+           prod_month_year <= as.Date("2009-12-31")) %>%
+  filter(latlong_id %in% w$latlong_id)
+d <- sum(p$total_oil_gas_produced)
+d
+round(((d / t ) * 100), digits = 1)
+```
+
+2010-2014
+
+```{r echo=FALSE}
+d <- calgem_production %>%
+  filter(total_oil_gas_produced > 0) %>%
+  filter(prod_month_year >= as.Date("2010-01-01") &
+           prod_month_year <= as.Date("2014-12-31")) %>%
+  distinct(longitude, latitude, .keep_all = TRUE) 
+p <- calgem_production %>% 
+  filter(total_oil_gas_produced > 0) %>%
+  filter(prod_month_year >= as.Date("2010-01-01") &
+           prod_month_year <= as.Date("2014-12-31")) %>%
+  filter(latlong_id %in% w$latlong_id)
+d <- sum(p$total_oil_gas_produced)
+d
+round(((d / t ) * 100), digits = 1)
+```
+
+2015-2019
+
+```{r echo=FALSE}
+w <- calgem_production %>%
+  filter(total_oil_gas_produced > 0) %>%
+  filter(prod_month_year >= as.Date("2015-01-01") &
+           prod_month_year <= as.Date("2019-12-31")) %>%
+  distinct(longitude, latitude, .keep_all = T)
+p <- calgem_production %>% 
+  filter(total_oil_gas_produced > 0) %>%
+  filter(prod_month_year >= as.Date("2015-01-01") &
+           prod_month_year <= as.Date("2019-12-31")) %>%
+  filter(latlong_id %in% w$latlong_id)
+d <- sum(p$total_oil_gas_produced)
+d
+round(((d / t ) * 100), digits = 1)
+```

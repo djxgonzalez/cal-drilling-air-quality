@@ -1,0 +1,780 @@
+---
+title: "Results - Daily Annuli - Preproduction - PM2.5"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+source("../../code/0-setup/1-setup.R")
+library("lfe")
+```
+
+```{r input_data, include=FALSE}
+# interim data
+aqs_exposure_monthly_idw_preprod <- 
+  readRDS("../../data/interim/aqs_exposure_monthly_idw_nowind_preprod.rds") %>%
+  select("site_id", "month_year", "site_id_month_year", "idw_index") %>%
+  rename("monitor_id"                = "site_id",
+         "monitor_month"             = "site_id_month_year",
+         "idw_index_monthly_preprod" = "idw_index") %>%
+  mutate(monitor_id    = as.factor(monitor_id),
+         monitor_month = as.factor(monitor_month))
+aqs_exposure_monthly_idw_prod <- 
+  readRDS("../../data/interim/aqs_exposure_monthly_idw_nowind_prod.rds") %>%
+  select("site_id", "month_year", "site_id_month_year", "idw_index") %>%
+  rename("monitor_id"             = "site_id",
+         "monitor_month"          = "site_id_month_year",
+         "idw_index_monthly_prod" = "idw_index") %>%
+  mutate(monitor_id    = as.factor(monitor_id),
+         monitor_month = as.factor(monitor_month))
+
+# processed data
+aqs_daily_annuli_exposure <- 
+  readRDS("../../data/processed/aqs_daily_annuli_exposure.rds")
+```
+
+```{r setup_data, include=FALSE}
+aqs_daily_annuli_exposure <- aqs_daily_annuli_exposure %>%
+  left_join(aqs_exposure_monthly_idw_preprod,
+            by = c("monitor_id", "month_year", "monitor_month")) %>%
+  left_join(aqs_exposure_monthly_idw_prod,
+            by = c("monitor_id", "month_year", "monitor_month"))
+
+data_in <- aqs_daily_annuli_exposure %>%
+  filter(pm25_mean >= 0) %>%
+  filter(year %in% c(2006:2019))
+```
+
+## Primary results
+
+#### Unadjusted linear regression model without FE
+
+```{r echo=FALSE}
+model_fit <- glm(pm25_mean ~ 
+                    preprod_count_uw_0to1km +
+                    preprod_count_uw_1to2km +
+                    preprod_count_uw_2to3km +
+                    preprod_count_uw_3to4km +
+                    preprod_count_uw_4to5km +
+                    preprod_count_uw_5to6km +
+                    preprod_count_uw_6to7km +
+                    preprod_count_uw_7to8km +
+                    preprod_count_uw_8to9km +
+                    preprod_count_uw_9to10km +
+                    preprod_count_dw_0to1km +
+                    preprod_count_dw_1to2km +
+                    preprod_count_dw_2to3km +
+                    preprod_count_dw_3to4km +
+                    preprod_count_dw_4to5km +
+                    preprod_count_dw_5to6km +
+                    preprod_count_dw_6to7km +
+                    preprod_count_dw_7to8km +
+                    preprod_count_dw_8to9km +
+                    preprod_count_dw_9to10km +
+                    preprod_count_lateral_0to1km +
+                    preprod_count_lateral_1to2km +
+                    preprod_count_lateral_2to3km +
+                    preprod_count_lateral_3to4km +
+                    preprod_count_lateral_4to5km +
+                    preprod_count_lateral_5to6km +
+                    preprod_count_lateral_6to7km +
+                    preprod_count_lateral_7to8km +
+                    preprod_count_lateral_8to9km +
+                    preprod_count_lateral_9to10km,
+                  data = data_in)
+summary(model_fit)
+```
+
+#### Adjusted linear regression model without FE
+
+```{r echo=FALSE}
+model_fit <- felm(pm25_mean ~ 
+                    preprod_count_uw_0to1km +
+                    preprod_count_uw_1to2km +
+                    preprod_count_uw_2to3km +
+                    preprod_count_uw_3to4km +
+                    preprod_count_uw_4to5km +
+                    preprod_count_uw_5to6km +
+                    preprod_count_uw_6to7km +
+                    preprod_count_uw_7to8km +
+                    preprod_count_uw_8to9km +
+                    preprod_count_uw_9to10km +
+                    preprod_count_dw_0to1km +
+                    preprod_count_dw_1to2km +
+                    preprod_count_dw_2to3km +
+                    preprod_count_dw_3to4km +
+                    preprod_count_dw_4to5km +
+                    preprod_count_dw_5to6km +
+                    preprod_count_dw_6to7km +
+                    preprod_count_dw_7to8km +
+                    preprod_count_dw_8to9km +
+                    preprod_count_dw_9to10km +
+                    preprod_count_lateral_0to1km +
+                    preprod_count_lateral_1to2km +
+                    preprod_count_lateral_2to3km +
+                    preprod_count_lateral_3to4km +
+                    preprod_count_lateral_4to5km +
+                    preprod_count_lateral_5to6km +
+                    preprod_count_lateral_6to7km +
+                    preprod_count_lateral_7to8km +
+                    preprod_count_lateral_8to9km +
+                    preprod_count_lateral_9to10km +
+                    n_plume +
+                    narr_precip + 
+                    narr_temp +
+                    narr_wind_speed 
+                  | factor(day_of_week),
+                  data = data_in)
+summary(model_fit)
+```
+
+
+#### Adjusted linear regression model with month + basin:year FE
+
+```{r echo=FALSE}
+model_fit <- felm(pm25_mean ~ 
+                    preprod_count_uw_0to1km +
+                    preprod_count_uw_1to2km +
+                    preprod_count_uw_2to3km +
+                    preprod_count_uw_3to4km +
+                    preprod_count_uw_4to5km +
+                    preprod_count_uw_5to6km +
+                    preprod_count_uw_6to7km +
+                    preprod_count_uw_7to8km +
+                    preprod_count_uw_8to9km +
+                    preprod_count_uw_9to10km +
+                    preprod_count_dw_0to1km +
+                    preprod_count_dw_1to2km +
+                    preprod_count_dw_2to3km +
+                    preprod_count_dw_3to4km +
+                    preprod_count_dw_4to5km +
+                    preprod_count_dw_5to6km +
+                    preprod_count_dw_6to7km +
+                    preprod_count_dw_7to8km +
+                    preprod_count_dw_8to9km +
+                    preprod_count_dw_9to10km +
+                    preprod_count_lateral_0to1km +
+                    preprod_count_lateral_1to2km +
+                    preprod_count_lateral_2to3km +
+                    preprod_count_lateral_3to4km +
+                    preprod_count_lateral_4to5km +
+                    preprod_count_lateral_5to6km +
+                    preprod_count_lateral_6to7km +
+                    preprod_count_lateral_7to8km +
+                    preprod_count_lateral_8to9km +
+                    preprod_count_lateral_9to10km +
+                    n_plume +
+                    narr_precip + 
+                    narr_temp +
+                    narr_wind_speed
+                  | factor(day_of_week) +
+                    factor(monitor_id):factor(month) +
+                    factor(carb_basin):factor(year),
+                  data = data_in)
+summary(model_fit)
+```
+
+
+#### Adjusted linear regression model with monitor + month + basin:year FE
+
+**Primary result**
+
+```{r echo=FALSE}
+model_fit <- felm(pm25_mean ~ 
+                    preprod_count_uw_0to1km +
+                    preprod_count_uw_1to2km +
+                    preprod_count_uw_2to3km +
+                    preprod_count_uw_3to4km +
+                    preprod_count_uw_4to5km +
+                    preprod_count_uw_5to6km +
+                    preprod_count_uw_6to7km +
+                    preprod_count_uw_7to8km +
+                    preprod_count_uw_8to9km +
+                    preprod_count_uw_9to10km +
+                    preprod_count_dw_0to1km +
+                    preprod_count_dw_1to2km +
+                    preprod_count_dw_2to3km +
+                    preprod_count_dw_3to4km +
+                    preprod_count_dw_4to5km +
+                    preprod_count_dw_5to6km +
+                    preprod_count_dw_6to7km +
+                    preprod_count_dw_7to8km +
+                    preprod_count_dw_8to9km +
+                    preprod_count_dw_9to10km +
+                    preprod_count_lateral_0to1km +
+                    preprod_count_lateral_1to2km +
+                    preprod_count_lateral_2to3km +
+                    preprod_count_lateral_3to4km +
+                    preprod_count_lateral_4to5km +
+                    preprod_count_lateral_5to6km +
+                    preprod_count_lateral_6to7km +
+                    preprod_count_lateral_7to8km +
+                    preprod_count_lateral_8to9km +
+                    preprod_count_lateral_9to10km +
+                    n_plume +
+                    narr_precip + 
+                    narr_temp +
+                    narr_wind_speed
+                  | factor(day_of_week) +
+                    factor(monitor_id):factor(month) +
+                    factor(carb_basin):factor(year) +
+                    monitor_id,
+                  data = data_in)
+summary(model_fit)
+```
+
+**Table**
+
+```{r echo=FALSE}
+model_output <-
+  tibble(
+    distance  = c("0-1", "1-2", "2-3", "3-4", "4-5",
+                  "5-6", "6-7", "7-8", "8-9", "9-10",
+                  "0-1", "1-2", "2-3", "3-4", "4-5",
+                  "5-6", "6-7", "7-8", "8-9", "9-10",
+                  "0-1", "1-2", "2-3", "3-4", "4-5",
+                  "5-6", "6-7", "7-8", "8-9", "9-10"),
+    direction = c("Upwind", "Upwind", "Upwind", "Upwind", "Upwind",
+                  "Upwind", "Upwind", "Upwind", "Upwind", "Upwind",
+                  "Downwind", "Downwind", "Downwind", "Downwind", "Downwind",
+                  "Downwind", "Downwind", "Downwind", "Downwind", "Downwind",
+                  "Lateral", "Lateral", "Lateral", "Lateral","Lateral",
+                  "Lateral", "Lateral", "Lateral", "Lateral","Lateral"),
+    point_est = coef(model_fit)[1:30],
+    ci_lower  = confint(model_fit)[1:30],
+    ci_upper  = confint(model_fit)[35:64])
+write_csv(model_output, "point_estimates/daily_annuli_preproduction_pm25.csv")
+model_output
+```
+
+**Figure**
+
+```{r echo=FALSE, warning = FALSE}
+model_output %>%
+  ggplot() + 
+  geom_pointrange(aes(x = distance, y = point_est, 
+                      ymin = ci_lower, ymax = ci_upper)) + 
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  labs(x = "Distance to well (km)", 
+       y = "Marginal change in daily CO conc. (µg/m^3)") +
+  theme_classic() +
+  facet_wrap(~ direction)
+```
+
+
+## Primary results
+
+#### Adjusted linear regression model without FE
+
+```{r echo=FALSE}
+model_fit <- felm(pm25_mean ~ 
+                    preprod_count_uw_0to1km +
+                    preprod_count_uw_1to2km +
+                    preprod_count_uw_2to3km +
+                    preprod_count_uw_3to4km +
+                    preprod_count_uw_4to5km +
+                    preprod_count_uw_5to6km +
+                    preprod_count_uw_6to7km +
+                    preprod_count_uw_7to8km +
+                    preprod_count_uw_8to9km +
+                    preprod_count_uw_9to10km +
+                    preprod_count_dw_0to1km +
+                    preprod_count_dw_1to2km +
+                    preprod_count_dw_2to3km +
+                    preprod_count_dw_3to4km +
+                    preprod_count_dw_4to5km +
+                    preprod_count_dw_5to6km +
+                    preprod_count_dw_6to7km +
+                    preprod_count_dw_7to8km +
+                    preprod_count_dw_8to9km +
+                    preprod_count_dw_9to10km +
+                    preprod_count_lateral_0to1km +
+                    preprod_count_lateral_1to2km +
+                    preprod_count_lateral_2to3km +
+                    preprod_count_lateral_3to4km +
+                    preprod_count_lateral_4to5km +
+                    preprod_count_lateral_5to6km +
+                    preprod_count_lateral_6to7km +
+                    preprod_count_lateral_7to8km +
+                    preprod_count_lateral_8to9km +
+                    preprod_count_lateral_9to10km +
+                    n_plume +
+                    narr_precip + 
+                    narr_temp +
+                    narr_wind_speed |
+                    factor(day_of_week),
+                  data = data_in)
+summary(model_fit)
+```
+
+
+#### Adjusted linear regression model with month + basin:year FE
+
+```{r echo=FALSE}
+model_fit <- felm(pm25_mean ~ 
+                    preprod_count_uw_0to1km +
+                    preprod_count_uw_1to2km +
+                    preprod_count_uw_2to3km +
+                    preprod_count_uw_3to4km +
+                    preprod_count_uw_4to5km +
+                    preprod_count_uw_5to6km +
+                    preprod_count_uw_6to7km +
+                    preprod_count_uw_7to8km +
+                    preprod_count_uw_8to9km +
+                    preprod_count_uw_9to10km +
+                    preprod_count_dw_0to1km +
+                    preprod_count_dw_1to2km +
+                    preprod_count_dw_2to3km +
+                    preprod_count_dw_3to4km +
+                    preprod_count_dw_4to5km +
+                    preprod_count_dw_5to6km +
+                    preprod_count_dw_6to7km +
+                    preprod_count_dw_7to8km +
+                    preprod_count_dw_8to9km +
+                    preprod_count_dw_9to10km +
+                    preprod_count_lateral_0to1km +
+                    preprod_count_lateral_1to2km +
+                    preprod_count_lateral_2to3km +
+                    preprod_count_lateral_3to4km +
+                    preprod_count_lateral_4to5km +
+                    preprod_count_lateral_5to6km +
+                    preprod_count_lateral_6to7km +
+                    preprod_count_lateral_7to8km +
+                    preprod_count_lateral_8to9km +
+                    preprod_count_lateral_9to10km +
+                    n_plume +
+                    narr_precip + 
+                    narr_temp +
+                    narr_wind_speed
+                  | factor(day_of_week) +
+                    factor(monitor_id):factor(month) +
+                    factor(carb_basin):factor(year),
+                  data = data_in)
+summary(model_fit)
+```
+
+
+#### Adjusted linear regression model with monitor + month + basin:year FE
+
+**60 degree sensitivity analysis**
+
+```{r echo=FALSE}
+model_fit <- felm(pm25_mean ~ 
+                    preprod_count_uw_60deg_0to1km +
+                    preprod_count_uw_60deg_1to2km +
+                    preprod_count_uw_60deg_2to3km +
+                    preprod_count_uw_60deg_3to4km +
+                    preprod_count_uw_60deg_4to5km +
+                    preprod_count_uw_60deg_5to6km +
+                    preprod_count_uw_60deg_6to7km +
+                    preprod_count_uw_60deg_7to8km +
+                    preprod_count_uw_60deg_8to9km +
+                    preprod_count_uw_60deg_9to10km +
+                    preprod_count_dw_0to1km +
+                    preprod_count_dw_1to2km +
+                    preprod_count_dw_2to3km +
+                    preprod_count_dw_3to4km +
+                    preprod_count_dw_4to5km +
+                    preprod_count_dw_5to6km +
+                    preprod_count_dw_6to7km +
+                    preprod_count_dw_7to8km +
+                    preprod_count_dw_8to9km +
+                    preprod_count_dw_9to10km +
+                    preprod_count_lateral_60deg_0to1km +
+                    preprod_count_lateral_60deg_1to2km +
+                    preprod_count_lateral_60deg_2to3km +
+                    preprod_count_lateral_60deg_3to4km +
+                    preprod_count_lateral_60deg_4to5km +
+                    preprod_count_lateral_60deg_5to6km +
+                    preprod_count_lateral_60deg_6to7km +
+                    preprod_count_lateral_60deg_7to8km +
+                    preprod_count_lateral_60deg_8to9km +
+                    preprod_count_lateral_60deg_9to10km +
+                    n_plume +
+                    narr_precip + 
+                    narr_temp +
+                    narr_wind_speed
+                  | factor(day_of_week) +
+                    factor(monitor_id):factor(month) +
+                    factor(carb_basin):factor(year) +
+                    monitor_id,
+                  data = data_in)
+summary(model_fit)
+```
+
+
+**Table**
+
+```{r echo=FALSE}
+model_output <-
+  tibble(
+    distance  = c("0-1", "1-2", "2-3", "3-4", "4-5",
+                  "5-6", "6-7", "7-8", "8-9", "9-10",
+                  "0-1", "1-2", "2-3", "3-4", "4-5",
+                  "5-6", "6-7", "7-8", "8-9", "9-10",
+                  "0-1", "1-2", "2-3", "3-4", "4-5",
+                  "5-6", "6-7", "7-8", "8-9", "9-10"),
+    direction = c("Upwind", "Upwind", "Upwind", "Upwind", "Upwind",
+                  "Upwind", "Upwind", "Upwind", "Upwind", "Upwind",
+                  "Downwind", "Downwind", "Downwind", "Downwind", "Downwind",
+                  "Downwind", "Downwind", "Downwind", "Downwind", "Downwind",
+                  "Lateral", "Lateral", "Lateral", "Lateral","Lateral",
+                  "Lateral", "Lateral", "Lateral", "Lateral","Lateral"),
+    point_est = coef(model_fit)[1:30],
+    ci_lower  = confint(model_fit)[1:30],
+    ci_upper  = confint(model_fit)[35:64])
+#write_csv(model_output, "point_estimates/daily_annuli_preproduction_pm25_60deg.csv")
+model_output
+```
+
+**Figure**
+
+```{r echo=FALSE, warning = FALSE}
+model_output %>%
+  ggplot() + 
+  geom_pointrange(aes(x = distance, y = point_est, 
+                      ymin = ci_lower, ymax = ci_upper)) + 
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  labs(x = "Distance to well (km)", 
+       y = "Marginal change in daily PM2.5 conc. (µg/m^3)") +
+  theme_classic() +
+  facet_wrap(~ direction)
+```
+
+
+
+#### Adjusted linear regression model with monitor + month + basin:year FE
+
+**120 degree sensitivity analysis**
+
+```{r echo=FALSE}
+model_fit <- felm(pm25_mean ~ 
+                    preprod_count_uw_120deg_0to1km +
+                    preprod_count_uw_120deg_1to2km +
+                    preprod_count_uw_120deg_2to3km +
+                    preprod_count_uw_120deg_3to4km +
+                    preprod_count_uw_120deg_4to5km +
+                    preprod_count_uw_120deg_5to6km +
+                    preprod_count_uw_120deg_6to7km +
+                    preprod_count_uw_120deg_7to8km +
+                    preprod_count_uw_120deg_8to9km +
+                    preprod_count_uw_120deg_9to10km +
+                    preprod_count_dw_0to1km +
+                    preprod_count_dw_1to2km +
+                    preprod_count_dw_2to3km +
+                    preprod_count_dw_3to4km +
+                    preprod_count_dw_4to5km +
+                    preprod_count_dw_5to6km +
+                    preprod_count_dw_6to7km +
+                    preprod_count_dw_7to8km +
+                    preprod_count_dw_8to9km +
+                    preprod_count_dw_9to10km +
+                    preprod_count_lateral_120deg_0to1km +
+                    preprod_count_lateral_120deg_1to2km +
+                    preprod_count_lateral_120deg_2to3km +
+                    preprod_count_lateral_120deg_3to4km +
+                    preprod_count_lateral_120deg_4to5km +
+                    preprod_count_lateral_120deg_5to6km +
+                    preprod_count_lateral_120deg_6to7km +
+                    preprod_count_lateral_120deg_7to8km +
+                    preprod_count_lateral_120deg_8to9km +
+                    preprod_count_lateral_120deg_9to10km +
+                    n_plume +
+                    narr_precip + 
+                    narr_temp +
+                    narr_wind_speed
+                  | factor(day_of_week) +
+                    factor(monitor_id):factor(month) +
+                    factor(carb_basin):factor(year) +
+                    monitor_id,
+                  data = data_in)
+summary(model_fit)
+```
+
+**Table**
+
+```{r echo=FALSE}
+model_output <-
+  tibble(
+    distance  = c("0-1", "1-2", "2-3", "3-4", "4-5",
+                  "5-6", "6-7", "7-8", "8-9", "9-10",
+                  "0-1", "1-2", "2-3", "3-4", "4-5",
+                  "5-6", "6-7", "7-8", "8-9", "9-10",
+                  "0-1", "1-2", "2-3", "3-4", "4-5",
+                  "5-6", "6-7", "7-8", "8-9", "9-10"),
+    direction = c("Upwind", "Upwind", "Upwind", "Upwind", "Upwind",
+                  "Upwind", "Upwind", "Upwind", "Upwind", "Upwind",
+                  "Downwind", "Downwind", "Downwind", "Downwind", "Downwind",
+                  "Downwind", "Downwind", "Downwind", "Downwind", "Downwind",
+                  "Lateral", "Lateral", "Lateral", "Lateral","Lateral",
+                  "Lateral", "Lateral", "Lateral", "Lateral","Lateral"),
+    point_est = coef(model_fit)[1:30],
+    ci_lower  = confint(model_fit)[1:30],
+    ci_upper  = confint(model_fit)[35:64])
+#write_csv(model_output, "point_estimates/daily_annuli_preproduction_pm25_120deg.csv")
+model_output
+```
+
+**Figure**
+
+```{r echo=FALSE, warning = FALSE}
+model_output %>%
+  ggplot() + 
+  geom_pointrange(aes(x = distance, y = point_est, 
+                      ymin = ci_lower, ymax = ci_upper)) + 
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  labs(x = "Distance to well (km)", 
+       y = "Marginal change in daily PM2.5 conc. (µg/m^3)") +
+  theme_classic() +
+  facet_wrap(~ direction)
+```
+
+
+#### Adjusted linear regression model with monitor + month + basin:year FE and polynomial terms
+
+```{r echo=FALSE}
+model_fit <- felm(pm25_mean ~ 
+                    preprod_count_uw_0to1km +
+                    poly(preprod_count_uw_1to2km, 2) +
+                    poly(preprod_count_uw_2to3km, 2) +
+                    poly(preprod_count_uw_3to4km, 2) +
+                    poly(preprod_count_uw_4to5km, 2) +
+                    poly(preprod_count_uw_5to6km, 2) +
+                    poly(preprod_count_uw_6to7km, 2) +
+                    poly(preprod_count_uw_7to8km, 2) +
+                    poly(preprod_count_uw_8to9km, 2) +
+                    poly(preprod_count_uw_9to10km, 2) +
+                    preprod_count_dw_0to1km +
+                    poly(preprod_count_dw_1to2km, 2) +
+                    poly(preprod_count_dw_2to3km, 2) +
+                    poly(preprod_count_dw_3to4km, 2) +
+                    poly(preprod_count_dw_4to5km, 2) +
+                    poly(preprod_count_dw_5to6km, 2) +
+                    poly(preprod_count_dw_6to7km, 2) +
+                    poly(preprod_count_dw_7to8km, 2) +
+                    poly(preprod_count_dw_8to9km , 2) +
+                    poly(preprod_count_dw_9to10km, 2) +
+                    n_plume +
+                    narr_precip + 
+                    narr_temp +
+                    narr_wind_speed
+                  | monitor_id + 
+                    factor(month) +
+                    factor(carb_basin):factor(year),
+                  data = data_in)
+summary(model_fit)
+```
+
+
+
+## No wind
+
+#### Adjusted linear regression model with monitor + month + basin:year FE
+
+**For sensitivity analysis**
+
+```{r echo=FALSE}
+model_fit <- felm(pm25_mean ~ 
+                    preprod_count_nowind_0to1km +
+                    preprod_count_nowind_1to2km +
+                    preprod_count_nowind_2to3km +
+                    preprod_count_nowind_3to4km +
+                    preprod_count_nowind_4to5km +
+                    preprod_count_nowind_5to6km +
+                    preprod_count_nowind_6to7km +
+                    preprod_count_nowind_7to8km +
+                    preprod_count_nowind_8to9km +
+                    preprod_count_nowind_9to10km +
+                    n_plume +
+                    narr_precip + 
+                    narr_temp +
+                    narr_wind_speed
+                  | factor(day_of_week) +
+                    factor(monitor_id):factor(month) +
+                    factor(carb_basin):factor(year) +
+                    monitor_id ,
+                  data = data_in)
+summary(model_fit)
+```
+
+**Table**
+
+```{r echo=FALSE}
+model_output <-
+  tibble(
+    distance  = c("0-1", "1-2", "2-3", "3-4", "4-5"),
+    point_est = coef(model_fit)[1:5],
+    ci_lower  = confint(model_fit)[1:5],
+    ci_upper  = confint(model_fit)[15:19])
+write_csv(model_output, "point_estimates/daily_annuli_preproduction_pm25_nowind.csv")
+model_output
+```
+
+## Robustness checks
+
+### Excluding smoke days
+
+#### Adjusted linear regression model with monitor + month + basin:year FE
+
+**Excluding days with smoke plumes overhead**
+
+```{r echo=FALSE}
+model_fit <- felm(pm25_mean ~ 
+                    preprod_count_uw_0to1km +
+                    preprod_count_uw_1to2km +
+                    preprod_count_uw_2to3km +
+                    preprod_count_uw_3to4km +
+                    preprod_count_uw_4to5km +
+                    preprod_count_uw_5to6km +
+                    preprod_count_uw_6to7km +
+                    preprod_count_uw_7to8km +
+                    preprod_count_uw_8to9km +
+                    preprod_count_uw_9to10km +
+                    preprod_count_dw_0to1km +
+                    preprod_count_dw_1to2km +
+                    preprod_count_dw_2to3km +
+                    preprod_count_dw_3to4km +
+                    preprod_count_dw_4to5km +
+                    preprod_count_dw_5to6km +
+                    preprod_count_dw_6to7km +
+                    preprod_count_dw_7to8km +
+                    preprod_count_dw_8to9km +
+                    preprod_count_dw_9to10km +
+                    preprod_count_lateral_0to1km +
+                    preprod_count_lateral_1to2km +
+                    preprod_count_lateral_2to3km +
+                    preprod_count_lateral_3to4km +
+                    preprod_count_lateral_4to5km +
+                    preprod_count_lateral_5to6km +
+                    preprod_count_lateral_6to7km +
+                    preprod_count_lateral_7to8km +
+                    preprod_count_lateral_8to9km +
+                    preprod_count_lateral_9to10km +
+                    narr_precip + 
+                    narr_temp +
+                    narr_wind_speed
+                  | factor(day_of_week) +
+                    factor(monitor_id):factor(month) +
+                    factor(carb_basin):factor(year) +
+                    monitor_id,
+                  data = subset(data_in, smoke_day == 0))
+summary(model_fit)
+```
+
+```{r echo=FALSE}
+results_preprod_25_nosmokedays <-
+  tibble(
+    distance  = c("0-1", "1-2", "2-3", "3-4", "4-5",
+                  "5-6", "6-7", "7-8", "8-9", "9-10",
+                  "0-1", "1-2", "2-3", "3-4", "4-5",
+                  "5-6", "6-7", "7-8", "8-9", "9-10",
+                  "0-1", "1-2", "2-3", "3-4", "4-5",
+                  "5-6", "6-7", "7-8", "8-9", "9-10"),
+    direction = c("Upwind", "Upwind", "Upwind", "Upwind", "Upwind",
+                  "Upwind", "Upwind", "Upwind", "Upwind", "Upwind",
+                  "Downwind", "Downwind", "Downwind", "Downwind", "Downwind",
+                  "Downwind", "Downwind", "Downwind", "Downwind", "Downwind",
+                  "Lateral", "Lateral", "Lateral", "Lateral","Lateral",
+                  "Lateral", "Lateral", "Lateral", "Lateral","Lateral"),
+    point_est = coef(model_fit)[1:30],
+    ci_lower  = confint(model_fit)[1:30],
+    ci_upper  = confint(model_fit)[34:63])
+write_csv(results_preprod_25_nosmokedays,
+          "point_estimates/daily_annuli_preproduction_pm25_nosmokedays.csv")
+results_preprod_25_nosmokedays
+```
+
+#### Plot
+
+```{r echo=FALSE}
+library("patchwork")
+panel_1 <- results_preprod_25_nosmokedays %>%
+  filter(distance %in% c("0-1", "1-2", "2-3", "3-4", "4-5")) %>%
+  filter(direction == "Upwind") %>%
+  mutate(distance_ordinal = c(1:5)) %>%
+  ggplot() + 
+  geom_ribbon(aes(x     = distance_ordinal,
+                  y     = point_est,
+                  ymin  = ci_lower, 
+                  ymax  = ci_upper),
+              fill = "#08519c",
+              alpha = 0.5) +
+  geom_pointrange(aes(x     = distance_ordinal,
+                      y     = point_est,
+                      ymin  = ci_lower, 
+                      ymax  = ci_upper)) + 
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  ylim(c(-1.8, 3.6)) +
+  labs(x = "Distance to well", y = expression(PM[2.5]*" "*(µg*" "*m^-3))) +
+  scale_x_discrete(name = "Distance to well",
+                   limits = c("0-1", "1-2", "2-3", "3-4", "4-5")) +
+  theme_classic() +
+  theme(legend.position = "none",
+        axis.line.y  = element_blank())
+
+panel_2 <- results_preprod_25_nosmokedays %>%
+  filter(distance == c("0-1", "1-2", "2-3", "3-4", "4-5")) %>%
+  filter(direction == "Downwind") %>%
+  mutate(distance_ordinal = c(1:5)) %>%
+  ggplot() + 
+  geom_ribbon(aes(x     = distance_ordinal,
+                  y     = point_est, 
+                  ymin  = ci_lower, 
+                  ymax  = ci_upper),
+              fill = "#9ecae1", 
+              alpha = 0.5) +
+  geom_pointrange(aes(x     = distance_ordinal, 
+                      y     = point_est, 
+                      ymin  = ci_lower, 
+                      ymax  = ci_upper)) + 
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  labs(x = "Distance to well", y = "") +
+  scale_x_discrete(name = "Distance to well", 
+                   limits = c("0-1", "1-2", "2-3", "3-4", "4-5")) +
+  scale_y_continuous(position = "right", limits = c(-1.8, 3.6)) +
+  theme_classic() +
+  theme(axis.line.y = element_blank(),
+        axis.text.y = element_blank())
+
+figure <- panel_1 + panel_2
+figure
+ggsave(filename = "figure_s3_pm25_preprod_nosmokedays.png", plot = figure, device = "png",
+       height = 3, width = 8,
+       path = "../../output/figures/")
+```
+
+
+#### Exposure to preprod and prod wells
+
+```{r echo=FALSE}
+model_fit <- felm(pm25_mean ~ 
+                    preprod_count_uw_0to1km +
+                    preprod_count_uw_1to2km +
+                    preprod_count_uw_2to3km +
+                    preprod_count_uw_3to4km +
+                    preprod_count_uw_4to5km +
+                    prod_volume_upwind_0to1km +
+                    prod_volume_upwind_1to2km +
+                    prod_volume_upwind_2to3km +
+                    prod_volume_upwind_3to4km +
+                    prod_volume_upwind_4to5km +
+                    preprod_count_dw_0to1km +
+                    preprod_count_dw_1to2km +
+                    preprod_count_dw_2to3km +
+                    preprod_count_dw_3to4km +
+                    preprod_count_dw_4to5km +
+                    prod_volume_downwind_0to1km +
+                    prod_volume_downwind_1to2km +
+                    prod_volume_downwind_2to3km +
+                    prod_volume_downwind_3to4km +
+                    prod_volume_downwind_4to5km +
+                    n_plume +
+                    narr_precip + 
+                    narr_temp +
+                    narr_wind_speed
+                  | factor(day_of_week) +
+                    factor(carb_basin):factor(month) +
+                    factor(carb_basin):factor(year) +
+                    monitor_id,
+                  data = data_in)
+summary(model_fit)
+```

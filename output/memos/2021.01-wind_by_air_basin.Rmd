@@ -1,0 +1,72 @@
+---
+title: "Supplemental - Wind Rose"
+output: html_notebook
+date: "01/26/2021"
+---
+
+```{r setup, include=FALSE}
+source("../../code/0-setup/1-setup.R")
+library("openair")
+```
+
+```{r data_tidying, include=FALSE, message=FALSE}
+data_wind <- aqs_daily_annuli_preproduction %>%
+  #readRDS("../../data/processed/aqs_daily_annuli_preproduction.rds") %>%
+  select(monitor_id, date, carb_basin, narr_wind_speed, narr_wind_direction,
+         is_urban, pm25_mean, o3_max) %>%
+  rename(wd = narr_wind_direction, ws = narr_wind_speed)
+```
+
+```{r include=FALSE}
+data_wind2 <- data_wind %>%
+  group_by(carb_basin, date) %>%
+  summarize(wd = mean(wd),
+            ws = mean(ws),
+            pm25 = mean(pm25_mean))
+```
+
+#### Plot. Wind rose by season, California
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+windRose(data_wind, type = "season")
+```
+
+Note: Some changes in wind direction and speed by season across the state
+
+#### Plot. Wind rose by air basin, California
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+data_wind %>%
+  filter(carb_basin %in% c("San Joaquin Valley",
+                           "Sacramento Valley",
+                           "South Central Coast",
+                           "South Coast")) %>%
+  windRose(type = "carb_basin", annotate = " ")
+```
+
+Note: Substantial variation in wind roses by air basin
+
+#### Plot. Wind rose by urban/rural, California
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+data_wind %>%
+  mutate(setting = case_when(is_urban == 0 ~ "Rural",
+                             is_urban == 1 ~ "Urban")) %>%
+  mutate(setting = as.factor(setting)) %>%
+  windRose(type = "setting", annotate = " ")
+```
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+data_wind %>%
+  filter(monitor_id == "060290232") %>%
+  pollutionRose(pollutant = "o3_max",
+                breaks = c(0, 0.03, 0.06, 0.09, 0.12))
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+data_wind %>%
+  filter(monitor_id == "060290232") %>%
+  percentileRose(pollutant = "o3_max",
+                breaks = c(0, 0.03, 0.06, 0.09, 0.12))
+```

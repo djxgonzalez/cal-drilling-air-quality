@@ -1,0 +1,252 @@
+---
+title: "Memo - Examining changes in production in Lost Hills before/during/after SNAPS"
+output: html_notebook
+date: "2/25/2021"
+---
+
+To do:
+- confirm monitor location
+- confirm monitoring duration (currently defined as May 1 - July 31, 2019)
+- do a similar assessment for production wells as I did for the preproduction wells
+
+```{r setup, include=FALSE}
+source("../../code/0-setup/1-setup.R")
+library("openair")
+```
+
+```{r data_input, include=FALSE}
+aqs_daily_annuli_exposure_kern <- 
+  readRDS("../../data/processed/aqs_daily_annuli_exposure.rds") %>%
+  filter(county == "Kern") %>%
+  mutate(wd = narr_wind_direction,
+         ws = narr_wind_speed)
+calgem_production <- readRDS("../../data/interim/calgem_production_monthly.rds")
+wells_interim <- readRDS("../../data/interim/wells_interim.rds")
+monitor_lost_hills <- tibble(lon = -119.700624, lat = 35.615175) %>%
+  st_as_sf(coords = c("lon", "lat"), crs = crs_nad83)
+```
+
+```{r data_tidying, include=FALSE}
+wells_lost_hills <- wells_interim %>%
+  # note - there may be additional oil fields proximate to Lost Hills
+  filter(field_name %in% c("Lost Hills", "Lost Hills, Northwest")) %>% 
+  mutate(spudded_during_monitoring =
+           case_when((date_spudded >= as.Date("2019-05-01") &  
+                        date_spudded <= as.Date("2019-07-31")) ~ 1,
+                     (date_spudded < as.Date("2019-05-01") |  
+                        date_spudded > as.Date("2019-07-31")) ~ 0)) %>%
+  mutate(completed_during_monitoring =
+           case_when((date_completed >= as.Date("2019-05-01") &  
+                        date_completed <= as.Date("2019-07-31")) ~ 1,
+                     (date_completed < as.Date("2019-05-01") |  
+                        date_completed > as.Date("2019-07-31")) ~ 0)) %>%
+  mutate(spudded_during_monitoring =
+           replace_na(spudded_during_monitoring, 0),
+         completed_during_monitoring =
+           replace_na(completed_during_monitoring, 0)) %>%
+  mutate(preprod_during_monitoring =
+           case_when((spudded_during_monitoring   == 1 |
+                        completed_during_monitoring == 1) ~ 1,
+                     (spudded_during_monitoring == 0 &
+                        completed_during_monitoring == 0) ~ 0)) %>%
+  st_as_sf(coords = c("longitude", "latitude"), crs = crs_nad83)
+wells_kern_lost_excluded <- wells_interim %>%
+  filter(county_name == "Kern") %>%
+  filter(api_number %!in% wells_lost_hills$api_number) %>% 
+  st_as_sf(coords = c("longitude", "latitude"), crs = crs_nad83)
+monitor_lost_hills_buffer <- monitor_lost_hills %>%
+  st_transform(crs_projected) %>%
+  st_buffer(dist = 3000) %>%
+  st_transform(crs_nad83)
+```
+
+## Objectives
+
+The California Air Resources Board (CARB) conducted a monitoring campaign in the Kern County community of Lost Hills in 2019 [confirm dates]. A possible concern is that oil and gas operators changed their production activities in response to monitoring. Industry responses to monitoring have been documented in the past, and have been shown to lead to underreporting of pollutant concentrations (Zou 2017). In this memo, I examine whether there were changes in trends in oil/gas preproduction and production activities in oil fields in Lost Hills before, during, and after the SNAPS monitoring campaign.
+
+According to the [SNAPS Lost Hills Air Monitoring Plan](https://ww2.arb.ca.gov/resources/documents/lost-hills-air-monitoring-plan-snaps), monitoring was scheduled to begin in April 2019 and proceed for 3 months, with options for extension. Some pollutants were continuously montored, others were monitored on a 1-in-6 day schedule.
+
+
+## Analysis
+
+I haven't had time to confirm the location of the monitoring site, but I think it was near the Lost Hills school district building. From Google Maps, the coordinates are: 35.615175, -119.700624
+
+### Preproduction wells
+
+#### Plot. Wells spudd by month, Lost Hills
+
+```{r mesesage=FALSE, warning=FALSE, echo=FALSE}
+wells_spudded <- wells_lost_hills %>%
+  # makes new variable with combined month_year in date format
+  mutate(month_year = paste(month(date_spudded), "01",
+                            year(date_spudded),  sep = "/")) %>%
+  # converts to date
+  mutate(month_year = as.Date(month_year, format = "%m/%d/%Y")) %>%
+  # restricts to study period
+  filter(month_year >= as.Date("2017-01-01") &  
+           month_year <= as.Date("2019-12-31")) %>% 
+  # sums new completions by month
+  group_by(month_year) %>%
+  summarize(Spudded = n())
+wells_completed <- wells_lost_hills %>%
+  # makes new variable with combined month_year in date format
+  mutate(month_year = paste(month(date_completed), "01",
+                            year(date_completed),  sep = "/")) %>%
+  # converts to date
+  mutate(month_year = as.Date(month_year, format = "%m/%d/%Y")) %>%
+  # restricts to study period
+  filter(month_year >= as.Date("2017-01-01") &  
+           month_year <= as.Date("2019-12-31")) %>% 
+  # sums new completions by month
+  group_by(month_year) %>%
+  summarize(Completed = n()) #%>%
+data_figure_1b <- wells_spudded %>% 
+  as_tibble() %>%
+  select(-geometry) %>%
+  left_join(as_tibble(wells_completed)) %>%
+  pivot_longer(cols = Spudded:Completed)#, names_to = "event")
+# makes plot
+figure_1b <- data_figure_1b %>%
+  ggplot() + 
+  geom_bar(aes(month_year, value, fill = name), 
+           stat= "identity", position = "stack") + 
+  scale_fill_manual(values = c("#FF7F00", "#FFCFA0")) +
+  geom_vline(xintercept = as.Date("2019-05-01"), linetype = "dotted") +
+  xlim(c(as.Date("2017-01-01"), as.Date("2019-12-31"))) +
+  labs(x = "Month", y = "n wells") + 
+  theme_classic() +
+  theme(legend.position = "none")
+figure_1b
+```
+
+
+#### Plot. Wells spudd by month, Kern County (excluding Lost Hills)
+
+```{r mesesage=FALSE, warning=FALSE, echo=FALSE}
+wells_spudded <- wells_kern_lost_excluded %>%
+  # makes new variable with combined month_year in date format
+  mutate(month_year = paste(month(date_spudded), "01",
+                            year(date_spudded),  sep = "/")) %>%
+  # converts to date
+  mutate(month_year = as.Date(month_year, format = "%m/%d/%Y")) %>%
+  # restricts to study period
+  filter(month_year >= as.Date("2017-01-01") &  
+           month_year <= as.Date("2019-12-31")) %>% 
+  # sums new completions by month
+  group_by(month_year) %>%
+  summarize(Spudded = n())
+wells_completed <- wells_kern_lost_excluded %>%
+  # makes new variable with combined month_year in date format
+  mutate(month_year = paste(month(date_completed), "01",
+                            year(date_completed),  sep = "/")) %>%
+  # converts to date
+  mutate(month_year = as.Date(month_year, format = "%m/%d/%Y")) %>%
+  # restricts to study period
+  filter(month_year >= as.Date("2017-01-01") &  
+           month_year <= as.Date("2019-12-31")) %>% 
+  # sums new completions by month
+  group_by(month_year) %>%
+  summarize(Completed = n()) #%>%
+data_figure_1b <- wells_spudded %>% 
+  as_tibble() %>%
+  select(-geometry) %>%
+  left_join(as_tibble(wells_completed)) %>%
+  pivot_longer(cols = Spudded:Completed)#, names_to = "event")
+# makes plot
+figure_1b <- data_figure_1b %>%
+  ggplot() + 
+  geom_bar(aes(month_year, value, fill = name), 
+           stat= "identity", position = "stack") + 
+  scale_fill_manual(values = c("#FF7F00", "#FFCFA0")) +
+  geom_vline(xintercept = as.Date("2019-05-01"), linetype = "dotted") +
+  xlim(c(as.Date("2017-01-01"), as.Date("2019-12-31"))) +
+  labs(x = "Month", y = "n wells") + 
+  theme_classic() +
+  theme(legend.position = "none")
+figure_1b
+```
+
+#### Map. Location of preproduction wells near Lost Hills monitoring site
+
+```{r mesesage=FALSE, warning=FALSE, echo=FALSE}
+ggplot() +
+  geom_sf(data = wells_lost_hills, shape = 4, alpha = 0.1) +
+  scale_color_manual(values = c("black", "red")) +
+  geom_sf(data = monitor_lost_hills, shape = 17) +
+  geom_sf(data = monitor_lost_hills_buffer, fill = NA) +  
+  xlim(c(-119.8, -119.6)) +
+  ylim(c(35.54, 35.69)) +
+  theme_bw()
+```
+
+
+#### Map. Location of preproduction wells in 2017-19
+
+*Note: Wells drilled during monitoring period are in red*
+
+Monitor - triangle
+Monitor buffer - 3 km
+
+```{r mesesage=FALSE, warning=FALSE, echo=FALSE}
+ggplot() +
+  geom_sf(data = subset(wells_lost_hills,
+                        date_spudded > as.Date("2017-01-01") | 
+                          date_completed > as.Date("2017-01-01")), 
+          aes(color = as.factor(preprod_during_monitoring)),
+          shape = 4, alpha = 0.6) +
+  scale_color_manual(values = c("black", "red")) +
+  geom_sf(data = monitor_lost_hills, shape = 17) +
+  geom_sf(data = monitor_lost_hills_buffer, fill = NA) +  
+  xlim(c(-119.75, -119.65)) +
+  ylim(c(35.58, 35.66)) +
+  theme_bw()
+```
+
+
+#### Map. Location of preproduction wells in 2019
+
+*Note: Wells drilled during monitoring period are in red*
+
+```{r mesesage=FALSE, warning=FALSE, echo=FALSE}
+ggplot() +
+  geom_sf(data = subset(wells_lost_hills,
+                        date_spudded > as.Date("2019-01-01") | 
+                          date_completed > as.Date("2019-01-01")), 
+          aes(color = as.factor(preprod_during_monitoring)),
+          shape = 4, alpha = 0.6) +
+  scale_color_manual(values = c("black", "red")) +
+  geom_sf(data = monitor_lost_hills, shape = 17) +
+  geom_sf(data = monitor_lost_hills_buffer, fill = NA) +  
+  xlim(c(-119.75, -119.65)) +
+  ylim(c(35.58, 35.66)) +
+  theme_bw()
+```
+
+It appears that, during the monitoring period, the locations of wells that were in preproduction (spudding or completion) were located to the west/southwest, where the wind was least likely to be blowing from. WElls drilled to the northwest, where the prevailing wind was coming from during the monitoring period, were drilled outside the monitoring period. Arguably, any of these wells could have been drilled before/after April 2019.
+
+
+#### Plot. Wind rose by season in 2019, Kern County
+
+*Note: This data comes from 1999-2019 AQS monitors exposure data, not specific to Lost Hills but trends should hold for Kern County*
+
+```{r echo=FALSE}
+wind_plot <- windRose(subset(aqs_daily_annuli_exposure_kern,
+                             year == 2019),
+                      type = "season",
+                      angle.scale = NA,
+                      paddle = FALSE)
+wind_plot
+```
+
+In 2019 in Kern County, the wind was predominantly blowing from the northwest during the monitoring period inspring and summer; the wind blew from the west, where preproduction was occuring, approximately 15% of the time durng spring and summer.
+
+
+### Production wells and volume
+
+
+
+## Summary
+
+Preproduction activities continued at a similar pace during the monitoring period as before/after the monitoring period. However, all of the n = `r sum(wells_lost_hills$preprod_during_monitoring)` wells that were in preproduction during the monitoring period were drilled west/southwest of the monitor, during the season when the wind predominantly blows from the northwest. Other wells were drilled to the northwest in 2019, but all of those wells were in preproduction outside the monitoring period [confirm]. Therefore, the SNAPS monitor is likely to underestimate exposure experienced by the community outside the monitoring period.
+
+[add discussion of production wells/volume]

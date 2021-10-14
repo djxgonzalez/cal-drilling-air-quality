@@ -1,0 +1,1601 @@
+---
+title: "Ch. 3: Oil production and ambient air quality in California"
+subtitle: "Results - Monthly Annuli Active Wells (count, not production volume) (no wind)"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+source("../../code/0-setup/1-setup.R")
+library("lfe")
+```
+
+```{r data_import, include=FALSE}
+aqs_exposure_monthly_annuli_prod <-
+  readRDS("../../data/processed/aqs_exposure_monthly_annuli_preprod.csv")
+carb_basin <- 
+  st_read("../../data/raw/cal_epa/carb_air_basins/CaAirBasin.shp") %>%
+  st_transform(crs_nad83)
+wells_interim <- readRDS("../../data/interim/wells_interim.rds")
+cal_counties_raw <- 
+  st_read("../../data/raw/us_census/admin_shp/cal_counties.shp")
+```
+
+```{r data_tidying, include=FALSE}
+# appends CARB air basin to the dataset
+aqs_basins <- read_csv("../../data/interim/aqs_sites.csv") %>% 
+  st_as_sf(coords = c("longitude", "latitude"), crs = crs_nad83) %>%
+  st_join(carb_basin) %>%
+  as_tibble() %>%
+  select(site_id, NAME) %>%
+  rename(carb_basin = NAME)
+aqs_exposure_monthly_annuli_prod <- aqs_exposure_monthly_annuli_prod %>%
+  left_join(aqs_basins, by = "site_id")
+
+# 
+aqs_exposure_monthly_annuli_prod <- aqs_exposure_monthly_annuli_prod %>%
+  mutate(dummy_preprod_0to1km = case_when(wells_prod_0to1km == 0 ~ 0,
+                                          wells_prod_0to1km >= 1 ~ 1),
+         dummy_preprod_1to2km = case_when(wells_prod_1to2km == 0 ~ 0,
+                                          wells_prod_1to2km >= 1 ~ 1),
+         dummy_preprod_2to3km = case_when(wells_prod_2to3km == 0 ~ 0,
+                                          wells_prod_2to3km >= 1 ~ 1),
+         dummy_preprod_3to4km = case_when(wells_prod_3to4km == 0 ~ 0,
+                                          wells_prod_3to4km >= 1 ~ 1),
+         dummy_preprod_4to5km = case_when(wells_prod_4to5km == 0 ~ 0,
+                                          wells_prod_4to5km >= 1 ~ 1),
+         dummy_preprod_5to6km = case_when(wells_prod_5to6km == 0 ~ 0,
+                                          wells_prod_5to6km >= 1 ~ 1),
+         dummy_preprod_6to7km = case_when(wells_prod_6to7km == 0 ~ 0,
+                                          wells_prod_6to7km >= 1 ~ 1),
+         dummy_preprod_7to8km = case_when(wells_prod_7to8km == 0 ~ 0,
+                                          wells_prod_7to8km >= 1 ~ 1),
+         dummy_preprod_8to9km = case_when(wells_prod_8to9km == 0 ~ 0,
+                                          wells_prod_8to9km >= 1 ~ 1),
+         dummy_preprod_9to10km = case_when(wells_prod_9to10km == 0 ~ 0,
+                                           wells_prod_9to10km >= 1 ~ 1))
+```
+
+
+## Pollutant: CO
+
+**Notes:**
+
+- We used data from `r aqs_exposure_monthly_annuli_prod %>% filter(monthly_mean_co > 0) %>% distinct(site_id) %>% nrow()` monitors and `r aqs_exposure_monthly_annuli_prod %>% filter(monthly_mean_co > 0) %>% distinct(site_id_month_year) %>% nrow()` monitor-months, from `r min(aqs_exposure_monthly_annuli_prod$month_year)` to `r max(aqs_exposure_monthly_annuli_prod$month_year)`
+- We droppped the `r aqs_exposure_monthly_annuli_prod %>% filter(monthly_mean_co <= 0) %>% nrow()` monitor-months that had nonsensical mean monthly CO concentrations of ≤ 0 µg/m^3, 
+
+### Count of wells
+
+#### Crude model
+
+```{r echo=FALSE}
+model_fit <- felm(monthly_mean_co ~
+                    wells_prod_0to1km +
+                    wells_prod_1to2km +
+                    wells_prod_2to3km +
+                    wells_prod_3to4km +
+                    wells_prod_4to5km +
+                    wells_prod_5to6km +
+                    wells_prod_6to7km +
+                    wells_prod_7to8km +
+                    wells_prod_8to9km +
+                    wells_prod_9to10km,
+                  data = subset(aqs_exposure_monthly_annuli_prod, 
+                                monthly_mean_co > 0))
+summary(model_fit)
+```
+
+#### FE for air basin:month + year
+
+```{r echo=FALSE}
+model_fit <- felm(monthly_mean_co ~ 
+                    wells_prod_0to1km +
+                    wells_prod_1to2km +
+                    wells_prod_2to3km +
+                    wells_prod_3to4km +
+                    wells_prod_4to5km +
+                    wells_prod_5to6km +
+                    wells_prod_6to7km +
+                    wells_prod_7to8km +
+                    wells_prod_8to9km +
+                    wells_prod_9to10km 
+                  | factor(carb_basin):factor(month(month_year)) +
+                    factor(year(month_year)),
+                  data = subset(aqs_exposure_monthly_annuli_prod, 
+                                monthly_mean_co > 0))
+summary(model_fit)
+```
+
+#### FE for monitor + air basin-month + year
+
+```{r echo=FALSE}
+model_fit <- felm(monthly_mean_co ~
+                    wells_prod_0to1km +
+                    wells_prod_1to2km +
+                    wells_prod_2to3km +
+                    wells_prod_3to4km +
+                    wells_prod_4to5km +
+                    wells_prod_5to6km +
+                    wells_prod_6to7km +
+                    wells_prod_7to8km +
+                    wells_prod_8to9km +
+                    wells_prod_9to10km
+                  | factor(site_id) +
+                    factor(carb_basin):factor(month(month_year)) +
+                    factor(year(month_year)),
+                  data = subset(drop_na(aqs_exposure_monthly_annuli_prod,
+                                        monthly_mean_co), 
+                                monthly_mean_so2 > 0))
+summary(model_fit)
+```
+
+```{r echo=FALSE}
+results_table <- 
+  tibble(
+    distance = c("0-1", "1-2", "2-3", "3-4", "4-5",
+                 "5-6", "6-7", "7-8", "8-9", "9-10"),
+    pt_est   = coef(model_fit),
+    ci_lower = confint(model_fit)[1:10],
+    ci_upper = confint(model_fit)[11:20],
+    n_wells  = c(sum(aqs_exposure_monthly_annuli_prod$wells_prod_0to1km),
+                 sum(aqs_exposure_monthly_annuli_prod$wells_prod_1to2km),
+                 sum(aqs_exposure_monthly_annuli_prod$wells_prod_2to3km),
+                 sum(aqs_exposure_monthly_annuli_prod$wells_prod_3to4km),
+                 sum(aqs_exposure_monthly_annuli_prod$wells_prod_4to5km),
+                 sum(aqs_exposure_monthly_annuli_prod$wells_prod_5to6km),
+                 sum(aqs_exposure_monthly_annuli_prod$wells_prod_6to7km),
+                 sum(aqs_exposure_monthly_annuli_prod$wells_prod_7to8km),
+                 sum(aqs_exposure_monthly_annuli_prod$wells_prod_8to9km),
+                 sum(aqs_exposure_monthly_annuli_prod$wells_prod_9to10km))
+  )
+results_table
+```
+
+```{r echo=FALSE, warning=FALSE}
+panel_a <- ggplot(results_table) +
+  geom_pointrange(aes(x    = distance,
+                      y    = pt_est,
+                      ymin = ci_lower,
+                      ymax = ci_upper)) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  theme_classic()
+panel_a
+```
+
+```{r echo=FALSE}
+panel_b <- ggplot(results_table) +
+  geom_bar(aes(distance, n_wells), stat = "identity") +
+  theme_classic()
+panel_b
+```
+
+
+### New + Active wells
+
+#### FE for monitor + air basin-month + year
+
+```{r echo=FALSE}
+model_fit <- felm(monthly_mean_co ~
+                    wells_preprod_0to1km +
+                    wells_preprod_1to2km +
+                    wells_preprod_2to3km +
+                    wells_preprod_3to4km +
+                    wells_preprod_4to5km +
+                    wells_preprod_5to6km +
+                    wells_preprod_6to7km +
+                    wells_preprod_7to8km +
+                    wells_preprod_8to9km +
+                    wells_preprod_9to10km +
+                    wells_prod_0to1km +
+                    wells_prod_1to2km +
+                    wells_prod_2to3km +
+                    wells_prod_3to4km +
+                    wells_prod_4to5km +
+                    wells_prod_5to6km +
+                    wells_prod_6to7km +
+                    wells_prod_7to8km +
+                    wells_prod_8to9km +
+                    wells_prod_9to10km
+                  | factor(site_id) +
+                    factor(carb_basin):factor(month(month_year)) +
+                    factor(year(month_year)),
+                  data = subset(drop_na(aqs_exposure_monthly_annuli_prod,
+                                        monthly_mean_co), 
+                                monthly_mean_co > 0))
+summary(model_fit)
+```
+
+```{r echo=FALSE}
+results_table <- 
+  tibble(
+    distance = c("0-1", "1-2", "2-3", "3-4", "4-5",
+                 "5-6", "6-7", "7-8", "8-9", "9-10"),
+    new_pt_est      = coef(model_fit)[1:10],
+    new_ci_lower    = confint(model_fit)[1:10],
+    new_ci_upper    = confint(model_fit)[21:30],
+    active_pt_est   = coef(model_fit)[11:20],
+    active_ci_lower = confint(model_fit)[11:20],
+    active_ci_upper = confint(model_fit)[31:40]
+  )
+results_table
+```
+
+```{r echo=FALSE, warning=FALSE}
+results_table %>%
+  ggplot() +
+  geom_pointrange(aes(x    = distance,
+                      y    = new_pt_est,
+                      ymin = new_ci_lower,
+                      ymax = new_ci_upper),
+                  color = "orange") +
+  geom_pointrange(aes(x    = distance,
+                      y    = active_pt_est,
+                      ymin = active_ci_lower,
+                      ymax = active_ci_upper)) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  labs(x = "Distance to wells (km)", y = "Change in CO concentration") +
+  theme_classic()
+```
+
+### Indicator for at least one well in the annulus
+ 
+#### Crude model
+
+```{r echo=FALSE}
+model_fit <- felm(monthly_mean_co ~ 
+                    dummy_preprod_0to1km +
+                    dummy_preprod_1to2km +
+                    dummy_preprod_2to3km +
+                    dummy_preprod_3to4km +
+                    dummy_preprod_4to5km +
+                    dummy_preprod_5to6km +
+                    dummy_preprod_6to7km +
+                    dummy_preprod_7to8km +
+                    dummy_preprod_8to9km +
+                    dummy_preprod_9to10km,
+                  data = subset(aqs_exposure_monthly_annuli_prod, 
+                                monthly_mean_co > 0))
+summary(model_fit)
+```
+
+#### FE for air basin:month + year
+
+```{r echo=FALSE}
+model_fit <- felm(monthly_mean_co ~ 
+                    dummy_preprod_0to1km +
+                    dummy_preprod_1to2km +
+                    dummy_preprod_2to3km +
+                    dummy_preprod_3to4km +
+                    dummy_preprod_4to5km +
+                    dummy_preprod_5to6km +
+                    dummy_preprod_6to7km +
+                    dummy_preprod_7to8km +
+                    dummy_preprod_8to9km +
+                    dummy_preprod_9to10km
+                  | factor(carb_basin):factor(month(month_year)) +
+                    factor(year(month_year)),
+                  data = subset(aqs_exposure_monthly_annuli_prod, 
+                                monthly_mean_co > 0))
+summary(model_fit)
+```
+
+#### FE for monitor + air basin-month + year
+
+```{r echo=FALSE}
+model_fit <- felm(monthly_mean_co ~ 
+                    dummy_preprod_0to1km +
+                    dummy_preprod_1to2km +
+                    dummy_preprod_2to3km +
+                    dummy_preprod_3to4km +
+                    dummy_preprod_4to5km +
+                    dummy_preprod_5to6km +
+                    dummy_preprod_6to7km +
+                    dummy_preprod_7to8km +
+                    dummy_preprod_8to9km +
+                    dummy_preprod_9to10km
+                  | factor(site_id) +
+                    factor(carb_basin):factor(month(month_year)) +
+                    factor(year(month_year)),
+                  data = subset(drop_na(aqs_exposure_monthly_annuli_prod,
+                                        monthly_mean_co), 
+                                monthly_mean_co > 0))
+summary(model_fit)
+```
+
+```{r echo=FALSE}
+results_table <- 
+  tibble(
+    distance = c("0-1", "1-2", "2-3", "3-4", "4-5",
+                 "5-6", "6-7", "7-8", "8-9", "9-10"),
+    pt_est   = coef(model_fit),
+    ci_lower = confint(model_fit)[1:10],
+    ci_upper = confint(model_fit)[11:20],
+    n_wells  = c(sum(aqs_exposure_monthly_annuli_prod$wells_prod_0to1km),
+                 sum(aqs_exposure_monthly_annuli_prod$wells_prod_1to2km),
+                 sum(aqs_exposure_monthly_annuli_prod$wells_prod_2to3km),
+                 sum(aqs_exposure_monthly_annuli_prod$wells_prod_3to4km),
+                 sum(aqs_exposure_monthly_annuli_prod$wells_prod_4to5km),
+                 sum(aqs_exposure_monthly_annuli_prod$wells_prod_5to6km),
+                 sum(aqs_exposure_monthly_annuli_prod$wells_prod_6to7km),
+                 sum(aqs_exposure_monthly_annuli_prod$wells_prod_7to8km),
+                 sum(aqs_exposure_monthly_annuli_prod$wells_prod_8to9km),
+                 sum(aqs_exposure_monthly_annuli_prod$wells_prod_9to10km))
+  )
+results_table
+```
+
+```{r echo=FALSE, warning=FALSE}
+panel_a <- ggplot(results_table) +
+  geom_pointrange(aes(x    = distance,
+                      y    = pt_est,
+                      ymin = ci_lower,
+                      ymax = ci_upper)) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  theme_classic()
+panel_a
+```
+
+```{r echo=FALSE}
+panel_b <- ggplot(results_table) +
+  geom_bar(aes(distance, n_wells), stat = "identity") +
+  theme_classic()
+panel_b
+```
+
+
+## Pollutant: NO2
+
+**Notes:**
+
+- We used data from `r aqs_exposure_monthly_annuli_prod %>% filter(monthly_mean_no2 > 0) %>% distinct(site_id) %>% nrow()` monitors and `r aqs_exposure_monthly_annuli_prod %>% filter(monthly_mean_no2 > 0) %>% distinct(site_id_month_year) %>% nrow()` monitor-months, from `r min(aqs_exposure_monthly_annuli_prod$month_year)` to `r max(aqs_exposure_monthly_annuli_prod$month_year)`
+- We droppped the `r aqs_exposure_monthly_annuli_prod %>% filter(monthly_mean_no2 <= 0) %>% nrow()` monitor-months that had nonsensical mean monthly NO2 concentrations of ≤ 0 µg/m^3, 
+
+#### Crude model
+
+```{r echo=FALSE}
+model_fit <- felm(monthly_mean_no2 ~ 
+                    wells_prod_0to1km +
+                    wells_prod_1to2km +
+                    wells_prod_2to3km +
+                    wells_prod_3to4km +
+                    wells_prod_4to5km +
+                    wells_prod_5to6km +
+                    wells_prod_6to7km +
+                    wells_prod_7to8km +
+                    wells_prod_8to9km +
+                    wells_prod_9to10km,
+                  data = subset(aqs_exposure_monthly_annuli_prod, 
+                                monthly_mean_no2 > 0))
+summary(model_fit)
+```
+
+#### FE for air basin:month + year
+
+```{r echo=FALSE}
+model_fit <- felm(monthly_mean_no2 ~ 
+                    wells_prod_0to1km +
+                    wells_prod_1to2km +
+                    wells_prod_2to3km +
+                    wells_prod_3to4km +
+                    wells_prod_4to5km +
+                    wells_prod_5to6km +
+                    wells_prod_6to7km +
+                    wells_prod_7to8km +
+                    wells_prod_8to9km +
+                    wells_prod_9to10km
+                  | factor(carb_basin):factor(month(month_year)) +
+                    factor(year(month_year)),
+                  data = subset(aqs_exposure_monthly_annuli_prod, 
+                                monthly_mean_no2 > 0))
+summary(model_fit)
+```
+
+#### FE for monitor + air basin-month + year
+
+```{r echo=FALSE}
+model_fit <- felm(monthly_mean_no2 ~
+                    wells_prod_0to1km +
+                    wells_prod_1to2km +
+                    wells_prod_2to3km +
+                    wells_prod_3to4km +
+                    wells_prod_4to5km +
+                    wells_prod_5to6km +
+                    wells_prod_6to7km +
+                    wells_prod_7to8km +
+                    wells_prod_8to9km +
+                    wells_prod_9to10km
+                  | factor(site_id) +
+                    factor(carb_basin):factor(month(month_year)) +
+                    factor(year(month_year)),
+                  data = subset(drop_na(aqs_exposure_monthly_annuli_prod,
+                                        monthly_mean_no2), 
+                                monthly_mean_co > 0))
+summary(model_fit)
+confint(model_fit)
+```
+
+```{r echo=FALSE}
+results_table <- 
+  tibble(
+    distance = c("0-1", "1-2", "2-3", "3-4", "4-5",
+                 "5-6", "6-7", "7-8", "8-9", "9-10"),
+    pt_est   = coef(model_fit),
+    ci_lower = confint(model_fit)[1:10],
+    ci_upper = confint(model_fit)[11:20]
+  )
+results_table
+```
+
+```{r echo=FALSE, warning=FALSE}
+results_table %>%
+  ggplot() +
+  geom_pointrange(aes(x    = distance,
+                      y    = pt_est,
+                      ymin = ci_lower,
+                      ymax = ci_upper)) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  theme_classic()
+```
+
+
+### New + Active wells
+
+#### FE for monitor + air basin-month + year
+
+```{r echo=FALSE}
+model_fit <- felm(monthly_mean_no2 ~
+                    wells_preprod_0to1km +
+                    wells_preprod_1to2km +
+                    wells_preprod_2to3km +
+                    wells_preprod_3to4km +
+                    wells_preprod_4to5km +
+                    wells_preprod_5to6km +
+                    wells_preprod_6to7km +
+                    wells_preprod_7to8km +
+                    wells_preprod_8to9km +
+                    wells_preprod_9to10km +
+                    wells_prod_0to1km +
+                    wells_prod_1to2km +
+                    wells_prod_2to3km +
+                    wells_prod_3to4km +
+                    wells_prod_4to5km +
+                    wells_prod_5to6km +
+                    wells_prod_6to7km +
+                    wells_prod_7to8km +
+                    wells_prod_8to9km +
+                    wells_prod_9to10km
+                  | factor(site_id) +
+                    factor(carb_basin):factor(month(month_year)) +
+                    factor(year(month_year)),
+                  data = subset(drop_na(aqs_exposure_monthly_annuli_prod,
+                                        monthly_mean_no2), 
+                                monthly_mean_no2 > 0))
+summary(model_fit)
+```
+
+```{r echo=FALSE}
+results_table <- 
+  tibble(
+    distance = c("0-1", "1-2", "2-3", "3-4", "4-5",
+                 "5-6", "6-7", "7-8", "8-9", "9-10"),
+    new_pt_est      = coef(model_fit)[1:10],
+    new_ci_lower    = confint(model_fit)[1:10],
+    new_ci_upper    = confint(model_fit)[21:30],
+    active_pt_est   = coef(model_fit)[11:20],
+    active_ci_lower = confint(model_fit)[11:20],
+    active_ci_upper = confint(model_fit)[31:40]
+  )
+results_table
+```
+
+```{r echo=FALSE, warning=FALSE}
+results_table %>%
+  ggplot() +
+  geom_pointrange(aes(x    = distance,
+                      y    = new_pt_est,
+                      ymin = new_ci_lower,
+                      ymax = new_ci_upper),
+                  color = "orange") +
+  geom_pointrange(aes(x    = distance,
+                      y    = active_pt_est,
+                      ymin = active_ci_lower,
+                      ymax = active_ci_upper)) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  theme_classic()
+```
+
+
+### Indicator for at least one well in the annulus
+ 
+#### Crude model
+
+```{r echo=FALSE}
+model_fit <- felm(monthly_mean_no2 ~ 
+                    dummy_preprod_0to1km +
+                    dummy_preprod_1to2km +
+                    dummy_preprod_2to3km +
+                    dummy_preprod_3to4km +
+                    dummy_preprod_4to5km +
+                    dummy_preprod_5to6km +
+                    dummy_preprod_6to7km +
+                    dummy_preprod_7to8km +
+                    dummy_preprod_8to9km +
+                    dummy_preprod_9to10km,
+                  data = subset(aqs_exposure_monthly_annuli_prod, 
+                                monthly_mean_no2 > 0))
+summary(model_fit)
+```
+
+#### FE for air basin:month + year
+
+```{r echo=FALSE}
+model_fit <- felm(monthly_mean_no2 ~ 
+                    dummy_preprod_0to1km +
+                    dummy_preprod_1to2km +
+                    dummy_preprod_2to3km +
+                    dummy_preprod_3to4km +
+                    dummy_preprod_4to5km +
+                    dummy_preprod_5to6km +
+                    dummy_preprod_6to7km +
+                    dummy_preprod_7to8km +
+                    dummy_preprod_8to9km +
+                    dummy_preprod_9to10km
+                  | factor(carb_basin):factor(month(month_year)) +
+                    factor(year(month_year)),
+                  data = subset(aqs_exposure_monthly_annuli_prod, 
+                                monthly_mean_no2 > 0))
+summary(model_fit)
+```
+
+#### FE for monitor + air basin-month + year
+
+```{r echo=FALSE}
+model_fit <- felm(monthly_mean_no2 ~ 
+                    dummy_preprod_0to1km +
+                    dummy_preprod_1to2km +
+                    dummy_preprod_2to3km +
+                    dummy_preprod_3to4km +
+                    dummy_preprod_4to5km +
+                    dummy_preprod_5to6km +
+                    dummy_preprod_6to7km +
+                    dummy_preprod_7to8km +
+                    dummy_preprod_8to9km +
+                    dummy_preprod_9to10km
+                  | factor(site_id) +
+                    factor(carb_basin):factor(month(month_year)) +
+                    factor(year(month_year)),
+                  data = subset(drop_na(aqs_exposure_monthly_annuli_prod,
+                                        monthly_mean_no2), 
+                                monthly_mean_no2 > 0))
+summary(model_fit)
+confint(model_fit)
+```
+
+```{r echo=FALSE}
+results_table <- 
+  tibble(
+    distance = c("0-1", "1-2", "2-3", "3-4", "4-5",
+                 "5-6", "6-7", "7-8", "8-9", "9-10"),
+    pt_est   = coef(model_fit),
+    ci_lower = confint(model_fit)[1:10],
+    ci_upper = confint(model_fit)[11:20]
+  )
+results_table
+```
+
+```{r echo=FALSE, warning=FALSE}
+results_table %>%
+  ggplot() +
+  geom_pointrange(aes(x    = distance,
+                      y    = pt_est,
+                      ymin = ci_lower,
+                      ymax = ci_upper)) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  theme_classic()
+```
+
+
+## Pollutant: O3
+
+**Notes:**
+
+- We used data from `r aqs_exposure_monthly_annuli_prod %>% filter(monthly_mean_ozone > 0) %>% distinct(site_id) %>% nrow()` monitors and `r aqs_exposure_monthly_annuli_prod %>% filter(monthly_mean_ozone > 0) %>% distinct(site_id_month_year) %>% nrow()` monitor-months, from `r min(aqs_exposure_monthly_annuli_prod$month_year)` to `r max(aqs_exposure_monthly_annuli_prod$month_year)`
+- We droppped the `r aqs_exposure_monthly_annuli_prod %>% filter(monthly_mean_ozone <= 0) %>% nrow()` monitor-months that had nonsensical mean monthly O3 concentrations of ≤ 0 µg/m^3, 
+
+#### Crude model
+
+```{r echo=FALSE}
+model_fit <- felm(monthly_mean_ozone ~ 
+                    wells_prod_0to1km +
+                    wells_prod_1to2km +
+                    wells_prod_2to3km +
+                    wells_prod_3to4km +
+                    wells_prod_4to5km +
+                    wells_prod_5to6km +
+                    wells_prod_6to7km +
+                    wells_prod_7to8km +
+                    wells_prod_8to9km +
+                    wells_prod_9to10km,
+                  data = subset(aqs_exposure_monthly_annuli_prod, 
+                                monthly_mean_ozone > 0))
+summary(model_fit)
+```
+
+#### FE for air basin:month + year
+
+```{r echo=FALSE}
+model_fit <- felm(monthly_mean_ozone ~ 
+                    wells_prod_0to1km +
+                    wells_prod_1to2km +
+                    wells_prod_2to3km +
+                    wells_prod_3to4km +
+                    wells_prod_4to5km +
+                    wells_prod_5to6km +
+                    wells_prod_6to7km +
+                    wells_prod_7to8km +
+                    wells_prod_8to9km +
+                    wells_prod_9to10km
+                  | factor(carb_basin):factor(month(month_year)) +
+                    factor(year(month_year)),
+                  data = subset(aqs_exposure_monthly_annuli_prod, 
+                                monthly_mean_ozone > 0))
+summary(model_fit)
+```
+
+#### FE for monitor + air basin-month + year
+
+```{r echo=FALSE}
+model_fit <- felm(monthly_mean_ozone ~
+                    wells_prod_0to1km +
+                    wells_prod_1to2km +
+                    wells_prod_2to3km +
+                    wells_prod_3to4km +
+                    wells_prod_4to5km +
+                    wells_prod_5to6km +
+                    wells_prod_6to7km +
+                    wells_prod_7to8km +
+                    wells_prod_8to9km +
+                    wells_prod_9to10km
+                  | factor(site_id) +
+                    factor(carb_basin):factor(month(month_year)) +
+                    factor(year(month_year)),
+                  data = subset(drop_na(aqs_exposure_monthly_annuli_prod,
+                                        monthly_mean_ozone), 
+                                monthly_mean_ozone > 0))
+summary(model_fit)
+confint(model_fit)
+```
+
+```{r echo=FALSE}
+results_table <- 
+  tibble(
+    distance = c("0-1", "1-2", "2-3", "3-4", "4-5",
+                 "5-6", "6-7", "7-8", "8-9", "9-10"),
+    pt_est   = coef(model_fit),
+    ci_lower = confint(model_fit)[1:10],
+    ci_upper = confint(model_fit)[11:20]
+  )
+results_table
+```
+
+```{r echo=FALSE, warning=FALSE}
+results_table %>%
+  ggplot() +
+  geom_pointrange(aes(x    = distance,
+                      y    = pt_est,
+                      ymin = ci_lower,
+                      ymax = ci_upper)) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  theme_classic()
+```
+
+
+### New + Active wells
+
+#### FE for monitor + air basin-month + year
+
+```{r echo=FALSE}
+model_fit <- felm(monthly_mean_ozone ~
+                    wells_preprod_0to1km +
+                    wells_preprod_1to2km +
+                    wells_preprod_2to3km +
+                    wells_preprod_3to4km +
+                    wells_preprod_4to5km +
+                    wells_preprod_5to6km +
+                    wells_preprod_6to7km +
+                    wells_preprod_7to8km +
+                    wells_preprod_8to9km +
+                    wells_preprod_9to10km +
+                    wells_prod_0to1km +
+                    wells_prod_1to2km +
+                    wells_prod_2to3km +
+                    wells_prod_3to4km +
+                    wells_prod_4to5km +
+                    wells_prod_5to6km +
+                    wells_prod_6to7km +
+                    wells_prod_7to8km +
+                    wells_prod_8to9km +
+                    wells_prod_9to10km
+                  | factor(site_id) +
+                    factor(carb_basin):factor(month(month_year)) +
+                    factor(year(month_year)),
+                  data = subset(drop_na(aqs_exposure_monthly_annuli_prod,
+                                        monthly_mean_ozone), 
+                                monthly_mean_ozone > 0))
+summary(model_fit)
+```
+
+```{r echo=FALSE}
+results_table <- 
+  tibble(
+    distance = c("0-1", "1-2", "2-3", "3-4", "4-5",
+                 "5-6", "6-7", "7-8", "8-9", "9-10"),
+    new_pt_est      = coef(model_fit)[1:10],
+    new_ci_lower    = confint(model_fit)[1:10],
+    new_ci_upper    = confint(model_fit)[21:30],
+    active_pt_est   = coef(model_fit)[11:20],
+    active_ci_lower = confint(model_fit)[11:20],
+    active_ci_upper = confint(model_fit)[31:40]
+  )
+results_table
+```
+
+```{r echo=FALSE, warning=FALSE}
+results_table %>%
+  ggplot() +
+  geom_pointrange(aes(x    = distance,
+                      y    = new_pt_est,
+                      ymin = new_ci_lower,
+                      ymax = new_ci_upper),
+                  color = "orange") +
+  geom_pointrange(aes(x    = distance,
+                      y    = active_pt_est,
+                      ymin = active_ci_lower,
+                      ymax = active_ci_upper)) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  labs(x = "Distance to well (km)", y = "Change in O3 concentration") +
+  theme_classic()
+```
+
+
+### Indicator for at least one well in the annulus
+ 
+#### Crude model
+
+```{r echo=FALSE}
+model_fit <- felm(monthly_mean_ozone ~ 
+                    dummy_preprod_0to1km +
+                    dummy_preprod_1to2km +
+                    dummy_preprod_2to3km +
+                    dummy_preprod_3to4km +
+                    dummy_preprod_4to5km +
+                    dummy_preprod_5to6km +
+                    dummy_preprod_6to7km +
+                    dummy_preprod_7to8km +
+                    dummy_preprod_8to9km +
+                    dummy_preprod_9to10km,
+                  data = subset(aqs_exposure_monthly_annuli_prod, 
+                                monthly_mean_ozone > 0))
+summary(model_fit)
+```
+
+#### FE for air basin:month + year
+
+```{r echo=FALSE}
+model_fit <- felm(monthly_mean_ozone ~ 
+                    dummy_preprod_0to1km +
+                    dummy_preprod_1to2km +
+                    dummy_preprod_2to3km +
+                    dummy_preprod_3to4km +
+                    dummy_preprod_4to5km +
+                    dummy_preprod_5to6km +
+                    dummy_preprod_6to7km +
+                    dummy_preprod_7to8km +
+                    dummy_preprod_8to9km +
+                    dummy_preprod_9to10km
+                  | factor(carb_basin):factor(month(month_year)) +
+                    factor(year(month_year)),
+                  data = subset(aqs_exposure_monthly_annuli_prod, 
+                                monthly_mean_ozone > 0))
+summary(model_fit)
+```
+
+#### FE for monitor + air basin-month + year
+
+```{r echo=FALSE}
+model_fit <- felm(monthly_mean_ozone ~ 
+                    dummy_preprod_0to1km +
+                    dummy_preprod_1to2km +
+                    dummy_preprod_2to3km +
+                    dummy_preprod_3to4km +
+                    dummy_preprod_4to5km +
+                    dummy_preprod_5to6km +
+                    dummy_preprod_6to7km +
+                    dummy_preprod_7to8km +
+                    dummy_preprod_8to9km +
+                    dummy_preprod_9to10km
+                  | factor(site_id) +
+                    factor(carb_basin):factor(month(month_year)) +
+                    factor(year(month_year)),
+                  data = subset(drop_na(aqs_exposure_monthly_annuli_prod,
+                                        monthly_mean_ozone), 
+                                monthly_mean_ozone > 0))
+summary(model_fit)
+confint(model_fit)
+```
+
+```{r echo=FALSE}
+results_table <- 
+  tibble(
+    distance = c("0-1", "1-2", "2-3", "3-4", "4-5",
+                 "5-6", "6-7", "7-8", "8-9", "9-10"),
+    pt_est   = coef(model_fit),
+    ci_lower = confint(model_fit)[1:10],
+    ci_upper = confint(model_fit)[11:20]
+  )
+results_table
+```
+
+```{r echo=FALSE, warning=FALSE}
+results_table %>%
+  ggplot() +
+  geom_pointrange(aes(x    = distance,
+                      y    = pt_est,
+                      ymin = ci_lower,
+                      ymax = ci_upper)) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  theme_classic()
+```
+
+
+## Pollutant: PM2.5
+
+**Notes:**
+
+- We used data from `r aqs_exposure_monthly_annuli_prod %>% filter(monthly_mean_pm2.5 > 0) %>% distinct(site_id) %>% nrow()` monitors and `r aqs_exposure_monthly_annuli_prod %>% filter(monthly_mean_pm2.5 > 0) %>% distinct(site_id_month_year) %>% nrow()` monitor-months, from `r min(aqs_exposure_monthly_annuli_prod$month_year)` to `r max(aqs_exposure_monthly_annuli_prod$month_year)`
+- We droppped the `r aqs_exposure_monthly_annuli_prod %>% filter(monthly_mean_pm2.5 <= 0) %>% nrow()` monitor-months that had nonsensical mean monthly PM2.5 concentrations of ≤ 0 µg/m^3, 
+
+#### Crude model
+
+```{r echo=FALSE}
+model_fit <- felm(monthly_mean_pm2.5 ~ 
+                    wells_prod_0to1km +
+                    wells_prod_1to2km +
+                    wells_prod_2to3km +
+                    wells_prod_3to4km +
+                    wells_prod_4to5km +
+                    wells_prod_5to6km +
+                    wells_prod_6to7km +
+                    wells_prod_7to8km +
+                    wells_prod_8to9km +
+                    wells_prod_9to10km,
+                  data = subset(aqs_exposure_monthly_annuli_prod, 
+                                monthly_mean_pm2.5 > 0))
+summary(model_fit)
+```
+
+#### FE for air basin:month + year
+
+```{r echo=FALSE}
+model_fit <- felm(monthly_mean_pm2.5 ~ 
+                    wells_prod_0to1km +
+                    wells_prod_1to2km +
+                    wells_prod_2to3km +
+                    wells_prod_3to4km +
+                    wells_prod_4to5km +
+                    wells_prod_5to6km +
+                    wells_prod_6to7km +
+                    wells_prod_7to8km +
+                    wells_prod_8to9km +
+                    wells_prod_9to10km 
+                  | factor(carb_basin):factor(month(month_year)) +
+                    factor(year(month_year)),
+                  data = subset(aqs_exposure_monthly_annuli_prod, 
+                                monthly_mean_pm2.5 > 0))
+summary(model_fit)
+```
+
+#### FE for monitor + air basin-month + year
+
+```{r echo=FALSE}
+model_fit <- felm(monthly_mean_pm2.5 ~
+                    wells_prod_0to1km +
+                    wells_prod_1to2km +
+                    wells_prod_2to3km +
+                    wells_prod_3to4km +
+                    wells_prod_4to5km +
+                    wells_prod_5to6km +
+                    wells_prod_6to7km +
+                    wells_prod_7to8km +
+                    wells_prod_8to9km +
+                    wells_prod_9to10km
+                  | factor(site_id) +
+                    factor(carb_basin):factor(month(month_year)) +
+                    factor(year(month_year)),
+                  data = subset(drop_na(aqs_exposure_monthly_annuli_prod,
+                                        monthly_mean_pm2.5), 
+                                monthly_mean_pm2.5 > 0))
+summary(model_fit)
+confint(model_fit)
+```
+
+```{r echo=FALSE}
+results_table <- 
+  tibble(
+    distance = c("0-1", "1-2", "2-3", "3-4", "4-5",
+                 "5-6", "6-7", "7-8", "8-9", "9-10"),
+    pt_est   = coef(model_fit),
+    ci_lower = confint(model_fit)[1:10],
+    ci_upper = confint(model_fit)[11:20]
+  )
+results_table
+```
+
+```{r echo=FALSE, warning=FALSE}
+results_table %>%
+  ggplot() +
+  geom_pointrange(aes(x    = distance,
+                      y    = pt_est,
+                      ymin = ci_lower,
+                      ymax = ci_upper)) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  theme_classic()
+```
+
+### New + Active wells
+
+#### FE for monitor + air basin-month + year
+
+```{r echo=FALSE}
+model_fit <- felm(monthly_mean_pm2.5 ~
+                    wells_preprod_0to1km +
+                    wells_preprod_1to2km +
+                    wells_preprod_2to3km +
+                    wells_preprod_3to4km +
+                    wells_preprod_4to5km +
+                    wells_preprod_5to6km +
+                    wells_preprod_6to7km +
+                    wells_preprod_7to8km +
+                    wells_preprod_8to9km +
+                    wells_preprod_9to10km +
+                    wells_prod_0to1km +
+                    wells_prod_1to2km +
+                    wells_prod_2to3km +
+                    wells_prod_3to4km +
+                    wells_prod_4to5km +
+                    wells_prod_5to6km +
+                    wells_prod_6to7km +
+                    wells_prod_7to8km +
+                    wells_prod_8to9km +
+                    wells_prod_9to10km
+                  | factor(site_id) +
+                    factor(carb_basin):factor(month(month_year)) +
+                    factor(year(month_year)),
+                  data = subset(drop_na(aqs_exposure_monthly_annuli_prod,
+                                        monthly_mean_pm2.5), 
+                                monthly_mean_pm2.5 > 0))
+summary(model_fit)
+```
+
+```{r echo=FALSE}
+results_table <- 
+  tibble(
+    distance = c("0-1", "1-2", "2-3", "3-4", "4-5",
+                 "5-6", "6-7", "7-8", "8-9", "9-10"),
+    new_pt_est      = coef(model_fit)[1:10],
+    new_ci_lower    = confint(model_fit)[1:10],
+    new_ci_upper    = confint(model_fit)[21:30],
+    active_pt_est   = coef(model_fit)[11:20],
+    active_ci_lower = confint(model_fit)[11:20],
+    active_ci_upper = confint(model_fit)[31:40]
+  )
+results_table
+```
+
+```{r echo=FALSE, warning=FALSE}
+results_table %>%
+  ggplot() +
+  geom_pointrange(aes(x    = distance,
+                      y    = new_pt_est,
+                      ymin = new_ci_lower,
+                      ymax = new_ci_upper),
+                  color = "orange") +
+  geom_pointrange(aes(x    = distance,
+                      y    = active_pt_est,
+                      ymin = active_ci_lower,
+                      ymax = active_ci_upper)) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  labs(x = "Distance to Well (km)", y = "Marginal change in PM2.5 (µg/m^3)") +
+  theme_classic()
+```
+
+
+
+### Indicator for at least one well in the annulus
+
+#### Crude model
+
+```{r echo=FALSE}
+model_fit <- felm(monthly_mean_pm2.5 ~ 
+                    dummy_preprod_0to1km +
+                    dummy_preprod_1to2km +
+                    dummy_preprod_2to3km +
+                    dummy_preprod_3to4km +
+                    dummy_preprod_4to5km +
+                    dummy_preprod_5to6km +
+                    dummy_preprod_6to7km +
+                    dummy_preprod_7to8km +
+                    dummy_preprod_8to9km +
+                    dummy_preprod_9to10km,
+                  data = subset(aqs_exposure_monthly_annuli_prod, 
+                                monthly_mean_pm2.5 > 0))
+summary(model_fit)
+```
+
+#### FE for air basin:month + year
+
+```{r echo=FALSE}
+model_fit <- felm(monthly_mean_pm2.5 ~ 
+                    dummy_preprod_0to1km +
+                    dummy_preprod_1to2km +
+                    dummy_preprod_2to3km +
+                    dummy_preprod_3to4km +
+                    dummy_preprod_4to5km +
+                    dummy_preprod_5to6km +
+                    dummy_preprod_6to7km +
+                    dummy_preprod_7to8km +
+                    dummy_preprod_8to9km +
+                    dummy_preprod_9to10km
+                  | factor(carb_basin):factor(month(month_year)) +
+                    factor(year(month_year)),
+                  data = subset(aqs_exposure_monthly_annuli_prod, 
+                                monthly_mean_pm2.5 > 0))
+summary(model_fit)
+```
+
+#### FE for monitor + air basin-month + year
+
+```{r echo=FALSE}
+model_fit <- felm(monthly_mean_pm2.5 ~ 
+                    dummy_preprod_0to1km +
+                    dummy_preprod_1to2km +
+                    dummy_preprod_2to3km +
+                    dummy_preprod_3to4km +
+                    dummy_preprod_4to5km +
+                    dummy_preprod_5to6km +
+                    dummy_preprod_6to7km +
+                    dummy_preprod_7to8km +
+                    dummy_preprod_8to9km +
+                    dummy_preprod_9to10km
+                  | factor(site_id) +
+                    factor(carb_basin):factor(month(month_year)) +
+                    factor(year(month_year)),
+                  data = subset(drop_na(aqs_exposure_monthly_annuli_prod,
+                                        monthly_mean_pm2.5), 
+                                monthly_mean_pm2.5 > 0))
+summary(model_fit)
+```
+
+```{r echo=FALSE}
+results_table <- 
+  tibble(
+    distance = c("0-1", "1-2", "2-3", "3-4", "4-5",
+                 "5-6", "6-7", "7-8", "8-9", "9-10"),
+    pt_est   = coef(model_fit),
+    ci_lower = confint(model_fit)[1:10],
+    ci_upper = confint(model_fit)[11:20]
+  )
+results_table
+```
+
+```{r echo=FALSE, warning=FALSE}
+results_table %>%
+  ggplot() +
+  geom_pointrange(aes(x    = distance,
+                      y    = pt_est,
+                      ymin = ci_lower,
+                      ymax = ci_upper)) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  theme_classic()
+```
+
+
+## Pollutant: PM10
+
+**Notes:**
+
+- We used data from `r aqs_exposure_monthly_annuli_prod %>% filter(monthly_mean_pm10 > 0) %>% distinct(site_id) %>% nrow()` monitors and `r aqs_exposure_monthly_annuli_prod %>% filter(monthly_mean_pm10 > 0) %>% distinct(site_id_month_year) %>% nrow()` monitor-months, from `r min(aqs_exposure_monthly_annuli_prod$month_year)` to `r max(aqs_exposure_monthly_annuli_prod$month_year)`
+- We droppped the `r aqs_exposure_monthly_annuli_prod %>% filter(monthly_mean_pm10 <= 0) %>% nrow()` monitor-months that had nonsensical mean monthly PM10 concentrations of ≤ 0 µg/m^3, 
+
+### Count of wells
+
+#### Crude model
+
+```{r echo=FALSE}
+model_fit <- felm(monthly_mean_pm10 ~ 
+                    wells_prod_0to1km +
+                    wells_prod_1to2km +
+                    wells_prod_2to3km +
+                    wells_prod_3to4km +
+                    wells_prod_4to5km +
+                    wells_prod_5to6km +
+                    wells_prod_6to7km +
+                    wells_prod_7to8km +
+                    wells_prod_8to9km +
+                    wells_prod_9to10km,
+                  data = subset(aqs_exposure_monthly_annuli_prod, 
+                                monthly_mean_pm10 > 0))
+summary(model_fit)
+```
+
+#### FE for air basin:month + year
+
+```{r echo=FALSE}
+model_fit <- felm(monthly_mean_pm10 ~
+                    wells_prod_0to1km +
+                    wells_prod_1to2km +
+                    wells_prod_2to3km +
+                    wells_prod_3to4km +
+                    wells_prod_4to5km +
+                    wells_prod_5to6km +
+                    wells_prod_6to7km +
+                    wells_prod_7to8km +
+                    wells_prod_8to9km +
+                    wells_prod_9to10km 
+                  | factor(carb_basin):factor(month(month_year)) +
+                    factor(year(month_year)),
+                  data = subset(aqs_exposure_monthly_annuli_prod, 
+                                monthly_mean_pm10 > 0))
+summary(model_fit)
+```
+
+#### FE for monitor + air basin-month + year
+
+```{r echo=FALSE}
+model_fit <- felm(monthly_mean_pm10 ~
+                    wells_prod_0to1km +
+                    wells_prod_1to2km +
+                    wells_prod_2to3km +
+                    wells_prod_3to4km +
+                    wells_prod_4to5km +
+                    wells_prod_5to6km +
+                    wells_prod_6to7km +
+                    wells_prod_7to8km +
+                    wells_prod_8to9km +
+                    wells_prod_9to10km
+                  | factor(site_id) +
+                    factor(carb_basin):factor(month(month_year)) +
+                    factor(year(month_year)),
+                  data = subset(drop_na(aqs_exposure_monthly_annuli_prod,
+                                        monthly_mean_pm10), 
+                                monthly_mean_pm10 > 0))
+summary(model_fit)
+```
+
+```{r echo=FALSE}
+results_table <- 
+  tibble(
+    distance = c("0-1", "1-2", "2-3", "3-4", "4-5",
+                 "5-6", "6-7", "7-8", "8-9", "9-10"),
+    pt_est   = coef(model_fit),
+    ci_lower = confint(model_fit)[1:10],
+    ci_upper = confint(model_fit)[11:20]
+  )
+results_table
+```
+
+```{r echo=FALSE, warning=FALSE}
+results_table %>%
+  ggplot() +
+  geom_pointrange(aes(x    = distance,
+                      y    = pt_est,
+                      ymin = ci_lower,
+                      ymax = ci_upper)) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  theme_classic()
+```
+
+### New + Active wells
+
+#### FE for monitor + air basin-month + year
+
+```{r echo=FALSE}
+model_fit <- felm(monthly_mean_pm10 ~
+                    wells_preprod_0to1km +
+                    wells_preprod_1to2km +
+                    wells_preprod_2to3km +
+                    wells_preprod_3to4km +
+                    wells_preprod_4to5km +
+                    wells_preprod_5to6km +
+                    wells_preprod_6to7km +
+                    wells_preprod_7to8km +
+                    wells_preprod_8to9km +
+                    wells_preprod_9to10km +
+                    wells_prod_0to1km +
+                    wells_prod_1to2km +
+                    wells_prod_2to3km +
+                    wells_prod_3to4km +
+                    wells_prod_4to5km +
+                    wells_prod_5to6km +
+                    wells_prod_6to7km +
+                    wells_prod_7to8km +
+                    wells_prod_8to9km +
+                    wells_prod_9to10km
+                  | factor(site_id) +
+                    factor(carb_basin):factor(month(month_year)) +
+                    factor(year(month_year)),
+                  data = subset(drop_na(aqs_exposure_monthly_annuli_prod,
+                                        monthly_mean_pm10), 
+                                monthly_mean_pm10 > 0))
+summary(model_fit)
+```
+
+```{r echo=FALSE}
+results_table <- 
+  tibble(
+    distance = c("0-1", "1-2", "2-3", "3-4", "4-5",
+                 "5-6", "6-7", "7-8", "8-9", "9-10"),
+    new_pt_est      = coef(model_fit)[1:10],
+    new_ci_lower    = confint(model_fit)[1:10],
+    new_ci_upper    = confint(model_fit)[21:30],
+    active_pt_est   = coef(model_fit)[11:20],
+    active_ci_lower = confint(model_fit)[11:20],
+    active_ci_upper = confint(model_fit)[31:40]
+  )
+results_table
+```
+
+```{r echo=FALSE, warning=FALSE}
+results_table %>%
+  ggplot() +
+  geom_pointrange(aes(x    = distance,
+                      y    = new_pt_est,
+                      ymin = new_ci_lower,
+                      ymax = new_ci_upper),
+                  color = "orange") +
+  geom_pointrange(aes(x    = distance,
+                      y    = active_pt_est,
+                      ymin = active_ci_lower,
+                      ymax = active_ci_upper)) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  
+  labs(x = "Distance to Well (km)", y = "Marginal change in PM10 (µg/m^3)") +
+  theme_classic()
+```
+
+### Indicator for at least one well in the annulus
+ 
+#### Crude model
+
+```{r echo=FALSE}
+model_fit <- felm(monthly_mean_pm10 ~ 
+                    dummy_preprod_0to1km +
+                    dummy_preprod_1to2km +
+                    dummy_preprod_2to3km +
+                    dummy_preprod_3to4km +
+                    dummy_preprod_4to5km +
+                    dummy_preprod_5to6km +
+                    dummy_preprod_6to7km +
+                    dummy_preprod_7to8km +
+                    dummy_preprod_8to9km +
+                    dummy_preprod_9to10km,
+                  data = subset(aqs_exposure_monthly_annuli_prod, 
+                                monthly_mean_pm10 > 0))
+summary(model_fit)
+```
+
+#### FE for air basin:month + year
+
+```{r echo=FALSE}
+model_fit <- felm(monthly_mean_pm10 ~ 
+                    dummy_preprod_0to1km +
+                    dummy_preprod_1to2km +
+                    dummy_preprod_2to3km +
+                    dummy_preprod_3to4km +
+                    dummy_preprod_4to5km +
+                    dummy_preprod_5to6km +
+                    dummy_preprod_6to7km +
+                    dummy_preprod_7to8km +
+                    dummy_preprod_8to9km +
+                    dummy_preprod_9to10km
+                  | factor(carb_basin):factor(month(month_year)) +
+                    factor(year(month_year)),
+                  data = subset(aqs_exposure_monthly_annuli_prod, 
+                                monthly_mean_pm10 > 0))
+summary(model_fit)
+```
+
+#### FE for monitor + air basin-month + year
+
+```{r echo=FALSE}
+model_fit <- felm(monthly_mean_pm10 ~ 
+                    dummy_preprod_0to1km +
+                    dummy_preprod_1to2km +
+                    dummy_preprod_2to3km +
+                    dummy_preprod_3to4km +
+                    dummy_preprod_4to5km +
+                    dummy_preprod_5to6km +
+                    dummy_preprod_6to7km +
+                    dummy_preprod_7to8km +
+                    dummy_preprod_8to9km +
+                    dummy_preprod_9to10km
+                  | factor(site_id) +
+                    factor(carb_basin):factor(month(month_year)) +
+                    factor(year(month_year)),
+                  data = subset(drop_na(aqs_exposure_monthly_annuli_prod,
+                                        monthly_mean_pm10), 
+                                monthly_mean_pm10 > 0))
+summary(model_fit)
+```
+
+```{r echo=FALSE}
+results_table <- 
+  tibble(
+    distance = c("0-1", "1-2", "2-3", "3-4", "4-5",
+                 "5-6", "6-7", "7-8", "8-9", "9-10"),
+    pt_est   = coef(model_fit),
+    ci_lower = confint(model_fit)[1:10],
+    ci_upper = confint(model_fit)[11:20]
+  )
+results_table
+```
+
+```{r echo=FALSE, warning=FALSE}
+results_table %>%
+  ggplot() +
+  geom_pointrange(aes(x    = distance,
+                      y    = pt_est,
+                      ymin = ci_lower,
+                      ymax = ci_upper)) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  theme_classic()
+```
+
+
+## Pollutant: SO2
+
+**Notes:**
+
+- We used data from `r aqs_exposure_monthly_annuli_prod %>% filter(monthly_mean_so2 > 0) %>% distinct(site_id) %>% nrow()` monitors and `r aqs_exposure_monthly_annuli_prod %>% filter(monthly_mean_so2 > 0) %>% distinct(site_id_month_year) %>% nrow()` monitor-months, from `r min(aqs_exposure_monthly_annuli_prod$month_year)` to `r max(aqs_exposure_monthly_annuli_prod$month_year)`
+- We droppped the `r aqs_exposure_monthly_annuli_prod %>% filter(monthly_mean_so2 <= 0) %>% nrow()` monitor-months that had nonsensical mean monthly SO2 concentrations of ≤ 0 µg/m^3, 
+
+#### Crude model
+
+```{r echo=FALSE}
+model_fit <- felm(monthly_mean_so2 ~ 
+                    wells_prod_0to1km +
+                    wells_prod_1to2km +
+                    wells_prod_2to3km +
+                    wells_prod_3to4km +
+                    wells_prod_4to5km +
+                    wells_prod_5to6km +
+                    wells_prod_6to7km +
+                    wells_prod_7to8km +
+                    wells_prod_8to9km +
+                    wells_prod_9to10km,
+                  data = subset(aqs_exposure_monthly_annuli_prod, 
+                                monthly_mean_so2 > 0))
+summary(model_fit)
+```
+
+#### FE for air basin:month + year
+
+```{r echo=FALSE}
+model_fit <- felm(monthly_mean_so2 ~ 
+                    wells_prod_0to1km +
+                    wells_prod_1to2km +
+                    wells_prod_2to3km +
+                    wells_prod_3to4km +
+                    wells_prod_4to5km +
+                    wells_prod_5to6km +
+                    wells_prod_6to7km +
+                    wells_prod_7to8km +
+                    wells_prod_8to9km +
+                    wells_prod_9to10km
+                  | factor(carb_basin):factor(month(month_year)) +
+                    factor(year(month_year)),
+                  data = subset(aqs_exposure_monthly_annuli_prod, 
+                                monthly_mean_so2 > 0))
+summary(model_fit)
+```
+
+#### FE for monitor + air basin-month + year
+
+```{r echo=FALSE}
+model_fit <- felm(monthly_mean_so2 ~
+                    wells_prod_0to1km +
+                    wells_prod_1to2km +
+                    wells_prod_2to3km +
+                    wells_prod_3to4km +
+                    wells_prod_4to5km +
+                    wells_prod_5to6km +
+                    wells_prod_6to7km +
+                    wells_prod_7to8km +
+                    wells_prod_8to9km +
+                    wells_prod_9to10km
+                  | factor(site_id) +
+                    factor(carb_basin):factor(month(month_year)) +
+                    factor(year(month_year)),
+                  data = subset(drop_na(aqs_exposure_monthly_annuli_prod,
+                                        monthly_mean_so2), 
+                                monthly_mean_so2 > 0))
+summary(model_fit)
+confint(model_fit)
+```
+
+```{r echo=FALSE}
+results_table <- 
+  tibble(
+    distance = c("0-1", "1-2", "2-3", "3-4", "4-5",
+                 "5-6", "6-7", "7-8", "8-9", "9-10"),
+    pt_est   = coef(model_fit),
+    ci_lower = confint(model_fit)[1:10],
+    ci_upper = confint(model_fit)[11:20]
+  )
+results_table
+```
+
+```{r echo=FALSE, warning=FALSE}
+results_table %>%
+  ggplot() +
+  geom_pointrange(aes(x    = distance,
+                      y    = pt_est,
+                      ymin = ci_lower,
+                      ymax = ci_upper)) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  theme_classic()
+```
+
+### New + Active wells
+
+#### FE for monitor + air basin-month + year
+
+```{r echo=FALSE}
+model_fit <- felm(monthly_mean_so2 ~
+                    wells_preprod_0to1km +
+                    wells_preprod_1to2km +
+                    wells_preprod_2to3km +
+                    wells_preprod_3to4km +
+                    wells_preprod_4to5km +
+                    wells_preprod_5to6km +
+                    wells_preprod_6to7km +
+                    wells_preprod_7to8km +
+                    wells_preprod_8to9km +
+                    wells_preprod_9to10km +
+                    wells_prod_0to1km +
+                    wells_prod_1to2km +
+                    wells_prod_2to3km +
+                    wells_prod_3to4km +
+                    wells_prod_4to5km +
+                    wells_prod_5to6km +
+                    wells_prod_6to7km +
+                    wells_prod_7to8km +
+                    wells_prod_8to9km +
+                    wells_prod_9to10km
+                  | factor(site_id) +
+                    factor(carb_basin):factor(month(month_year)) +
+                    factor(year(month_year)),
+                  data = subset(drop_na(aqs_exposure_monthly_annuli_prod,
+                                        monthly_mean_so2), 
+                                monthly_mean_so2 > 0))
+summary(model_fit)
+```
+
+```{r echo=FALSE}
+results_table <- 
+  tibble(
+    distance = c("0-1", "1-2", "2-3", "3-4", "4-5",
+                 "5-6", "6-7", "7-8", "8-9", "9-10"),
+    new_pt_est      = coef(model_fit)[1:10],
+    new_ci_lower    = confint(model_fit)[1:10],
+    new_ci_upper    = confint(model_fit)[21:30],
+    active_pt_est   = coef(model_fit)[11:20],
+    active_ci_lower = confint(model_fit)[11:20],
+    active_ci_upper = confint(model_fit)[31:40]
+  )
+results_table
+```
+
+```{r echo=FALSE, warning=FALSE}
+results_table %>%
+  ggplot() +
+  geom_pointrange(aes(x    = distance,
+                      y    = new_pt_est,
+                      ymin = new_ci_lower,
+                      ymax = new_ci_upper),
+                  color = "orange") +
+  geom_pointrange(aes(x    = distance,
+                      y    = active_pt_est,
+                      ymin = active_ci_lower,
+                      ymax = active_ci_upper)) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  labs(x = "Distance to well (km)", y = "Change in SO2 concentration") +
+  theme_classic()
+```
+
+### Indicator for at least one well in the annulus
+ 
+#### Crude model
+
+```{r echo=FALSE}
+model_fit <- felm(monthly_mean_so2 ~ 
+                    dummy_preprod_0to1km +
+                    dummy_preprod_1to2km +
+                    dummy_preprod_2to3km +
+                    dummy_preprod_3to4km +
+                    dummy_preprod_4to5km +
+                    dummy_preprod_5to6km +
+                    dummy_preprod_6to7km +
+                    dummy_preprod_7to8km +
+                    dummy_preprod_8to9km +
+                    dummy_preprod_9to10km,
+                  data = subset(aqs_exposure_monthly_annuli_prod, 
+                                monthly_mean_so2 > 0))
+summary(model_fit)
+```
+
+#### FE for air basin:month + year
+
+```{r echo=FALSE}
+model_fit <- felm(monthly_mean_so2 ~ 
+                    dummy_preprod_0to1km +
+                    dummy_preprod_1to2km +
+                    dummy_preprod_2to3km +
+                    dummy_preprod_3to4km +
+                    dummy_preprod_4to5km +
+                    dummy_preprod_5to6km +
+                    dummy_preprod_6to7km +
+                    dummy_preprod_7to8km +
+                    dummy_preprod_8to9km +
+                    dummy_preprod_9to10km
+                  | factor(carb_basin):factor(month(month_year)) +
+                    factor(year(month_year)),
+                  data = subset(aqs_exposure_monthly_annuli_prod, 
+                                monthly_mean_so2 > 0))
+summary(model_fit)
+```
+
+#### FE for monitor + air basin-month + year
+
+```{r echo=FALSE}
+model_fit <- felm(monthly_mean_so2 ~ 
+                    dummy_preprod_0to1km +
+                    dummy_preprod_1to2km +
+                    dummy_preprod_2to3km +
+                    dummy_preprod_3to4km +
+                    dummy_preprod_4to5km +
+                    dummy_preprod_5to6km +
+                    dummy_preprod_6to7km +
+                    dummy_preprod_7to8km +
+                    dummy_preprod_8to9km +
+                    dummy_preprod_9to10km
+                  | factor(site_id) +
+                    factor(carb_basin):factor(month(month_year)) +
+                    factor(year(month_year)),
+                  data = subset(drop_na(aqs_exposure_monthly_annuli_prod,
+                                        monthly_mean_so2), 
+                                monthly_mean_so2 > 0))
+summary(model_fit)
+```
+
+```{r echo=FALSE}
+results_table <- 
+  tibble(
+    distance = c("0-1", "1-2", "2-3", "3-4", "4-5",
+                 "5-6", "6-7", "7-8", "8-9", "9-10"),
+    pt_est   = coef(model_fit),
+    ci_lower = confint(model_fit)[1:10],
+    ci_upper = confint(model_fit)[11:20]
+  )
+results_table
+```
+
+```{r echo=FALSE, warning=FALSE}
+results_table %>%
+  ggplot() +
+  geom_pointrange(aes(x    = distance,
+                      y    = pt_est,
+                      ymin = ci_lower,
+                      ymax = ci_upper)) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  theme_classic()
+```

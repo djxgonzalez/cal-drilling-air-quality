@@ -1,0 +1,495 @@
+---
+title: "Ch. 3: Oil production and ambient air quality in California"
+subtitle: "Results - Monthly Annuli New Wells (no wind)"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+source("../../code/0-setup/1-setup.R")
+library("lfe")
+```
+
+```{r data_import, include=FALSE}
+aqs_monthly_annuli_nowind_new <-
+  readRDS("../../data/processed/aqs_exposure_monthly_annuli_nowind_new.rds")
+carb_basin <- 
+  st_read("../../data/raw/cal_epa/carb_air_basins/CaAirBasin.shp") %>%
+  st_transform(crs_nad83)
+narr_precip <- readRDS("../../data/interim/narr_precipitation.rds")
+narr_temp <- readRDS("../../data/interim/narr_temperature.rds")
+wells_interim <- readRDS("../../data/interim/wells_interim.rds")
+cal_counties <- 
+  st_read("../../data/raw/us_census/admin_shp/cal_counties.shp") %>%
+  st_transform(crs_nad83)
+```
+
+```{r data_tidying, include=FALSE}
+# aggregates monthly precip (sum) and temp (mean)
+narr_precip_monthly <- narr_precip %>%
+  mutate(month_year = paste(year(date), month(date), "01", sep = "/")) %>%
+  mutate(month_year = as.Date(month_year)) %>%
+  group_by(site_id, month_year) %>%
+  summarize(monthly_precip_total = sum(narr_precip, na.rm = TRUE))
+
+narr_temp_monthly <- narr_temp %>%
+  mutate(month_year = paste(year(date), month(date), "01", sep = "/")) %>%
+  mutate(month_year = as.Date(month_year)) %>%
+  group_by(site_id, month_year) %>%
+  summarize(monthly_temp_mean = mean(narr_temp, na.rm = TRUE))
+
+# prepares CARB air basin data linked to site_id
+aqs_basins <- read_csv("../../data/interim/aqs_sites.csv") %>% 
+  st_as_sf(coords = c("longitude", "latitude"), crs = crs_nad83) %>%
+  st_join(carb_basin) %>%
+  as_tibble() %>%
+  select(site_id, NAME) %>%
+  rename(carb_basin = NAME)
+
+# joins CARB basins and NARR meteorological data
+aqs_monthly_annuli_nowind_new <- aqs_monthly_annuli_nowind_new  %>%
+  left_join(aqs_basins, by = "site_id") %>%
+  left_join(narr_precip_monthly, by = c("site_id", "month_year")) %>%
+  left_join(narr_temp_monthly,   by = c("site_id", "month_year"))
+```
+
+
+## Pollutant: CO
+
+**Notes:**
+
+- We used data from `r aqs_monthly_annuli_nowind_new %>% filter(monthly_mean_co > 0) %>% distinct(site_id) %>% nrow()` monitors and `r aqs_monthly_annuli_nowind_new %>% filter(monthly_mean_co > 0) %>% distinct(site_id_month_year) %>% nrow()` monitor-months, from `r min(aqs_monthly_annuli_nowind_new$month_year)` to `r max(aqs_monthly_annuli_nowind_new$month_year)`
+- We droppped the `r aqs_monthly_annuli_nowind_new %>% filter(monthly_mean_co <= 0) %>% nrow()` monitor-months that had nonsensical mean monthly CO concentrations of ≤ 0 µg/m^3, 
+
+
+#### FE for monitor + air basin-month + year
+
+```{r echo=FALSE, include=FALSE}
+model_fit <- felm(monthly_mean_co ~
+                    wells_preprod_0to1km +
+                    wells_preprod_1to2km +
+                    wells_preprod_2to3km +
+                    wells_preprod_3to4km +
+                    wells_preprod_4to5km +
+                    wells_preprod_5to6km +
+                    wells_preprod_6to7km +
+                    wells_preprod_7to8km +
+                    wells_preprod_8to9km +
+                    wells_preprod_9to10km +
+                    monthly_precip_total +
+                    monthly_temp_mean
+                  | factor(site_id) +
+                    factor(carb_basin):factor(month(month_year)) +
+                    factor(year(month_year)),
+                  data = subset(drop_na(aqs_monthly_annuli_nowind_new,
+                                        monthly_mean_co), 
+                                monthly_mean_co > 0))
+summary(model_fit)
+```
+
+```{r echo=FALSE}
+results_table <- 
+  tibble(
+    distance = c("0-1", "1-2", "2-3", "3-4", "4-5",
+                 "5-6", "6-7", "7-8", "8-9", "9-10"),
+    point_est   = coef(model_fit)[1:10],
+    ci_lower = confint(model_fit)[1:10],
+    ci_upper = confint(model_fit)[13:22],
+    n_wells  = c(sum(aqs_monthly_annuli_nowind_new$wells_preprod_0to1km),
+                 sum(aqs_monthly_annuli_nowind_new$wells_preprod_1to2km),
+                 sum(aqs_monthly_annuli_nowind_new$wells_preprod_2to3km),
+                 sum(aqs_monthly_annuli_nowind_new$wells_preprod_3to4km),
+                 sum(aqs_monthly_annuli_nowind_new$wells_preprod_4to5km),
+                 sum(aqs_monthly_annuli_nowind_new$wells_preprod_5to6km),
+                 sum(aqs_monthly_annuli_nowind_new$wells_preprod_6to7km),
+                 sum(aqs_monthly_annuli_nowind_new$wells_preprod_7to8km),
+                 sum(aqs_monthly_annuli_nowind_new$wells_preprod_8to9km),
+                 sum(aqs_monthly_annuli_nowind_new$wells_preprod_9to10km))
+  )
+results_table
+```
+
+```{r echo=FALSE, warning=FALSE}
+results_table %>%
+  mutate(distance_ordinal = c(1:10)) %>%
+  ggplot() + 
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_ribbon(aes(x     = distance_ordinal, 
+                  y     = point_est, 
+                  ymin  = ci_lower, 
+                  ymax  = ci_upper),
+              fill = "black", 
+              alpha = 0.2) +
+  geom_pointrange(aes(x     = distance_ordinal, 
+                      y     = point_est, 
+                      ymin  = ci_lower, 
+                      ymax  = ci_upper),
+                  color = "black") + 
+  labs(y = "") +
+  scale_x_discrete(name = "", 
+                   limits = c("0-1", "1-2", "2-3", "3-4", "4-5",
+                              "5-6", "6-7", "7-8", "8-9", "9-10")) +
+  theme_classic()
+```
+
+```{r echo=FALSE}
+panel_b <- ggplot(results_table) +
+  geom_bar(aes(distance, n_wells), stat = "identity") +
+  theme_classic()
+panel_b
+```
+
+
+## Pollutant: NO2
+
+**Notes:**
+
+- We used data from `r aqs_monthly_annuli_nowind_new %>% filter(monthly_mean_no2 > 0) %>% distinct(site_id) %>% nrow()` monitors and `r aqs_monthly_annuli_nowind_new %>% filter(monthly_mean_no2 > 0) %>% distinct(site_id_month_year) %>% nrow()` monitor-months, from `r min(aqs_monthly_annuli_nowind_new$month_year)` to `r max(aqs_monthly_annuli_nowind_new$month_year)`
+- We droppped the `r aqs_monthly_annuli_nowind_new %>% filter(monthly_mean_no2 <= 0) %>% nrow()` monitor-months that had nonsensical mean monthly NO2 concentrations of ≤ 0 µg/m^3, 
+
+#### Crude model
+
+```{r echo=FALSE}
+model_fit <- felm(monthly_mean_no2 ~ 
+                    wells_preprod_0to1km +
+                    wells_preprod_1to2km +
+                    wells_preprod_2to3km +
+                    wells_preprod_3to4km +
+                    wells_preprod_4to5km +
+                    wells_preprod_5to6km +
+                    wells_preprod_6to7km +
+                    wells_preprod_7to8km +
+                    wells_preprod_8to9km +
+                    wells_preprod_9to10km,
+                  data = subset(aqs_monthly_annuli_nowind_new, 
+                                monthly_mean_no2 > 0))
+summary(model_fit)
+```
+
+
+#### Adjusted model with basin-month + year + monitor FE
+
+```{r echo=FALSE, include=FALSE}
+model_fit <- felm(monthly_mean_no2 ~
+                    wells_preprod_0to1km +
+                    wells_preprod_1to2km +
+                    wells_preprod_2to3km +
+                    wells_preprod_3to4km +
+                    wells_preprod_4to5km +
+                    wells_preprod_5to6km +
+                    wells_preprod_6to7km +
+                    wells_preprod_7to8km +
+                    wells_preprod_8to9km +
+                    wells_preprod_9to10km +
+                    monthly_precip_total +
+                    monthly_temp_mean
+                  | factor(site_id) +
+                    factor(carb_basin):factor(month(month_year)) +
+                    factor(year(month_year)),
+                  data = subset(drop_na(aqs_monthly_annuli_nowind_new,
+                                        monthly_mean_no2), 
+                                monthly_mean_no2 > 0))
+summary(model_fit)
+```
+
+```{r echo=FALSE}
+results_table <- 
+  tibble(
+    distance    = c("0-1", "1-2", "2-3", "3-4", "4-5",
+                    "5-6", "6-7", "7-8", "8-9", "9-10"),
+    point_est   = coef(model_fit)[1:10],
+    ci_lower    = confint(model_fit)[1:10],
+    ci_upper    = confint(model_fit)[13:22]
+  )
+saveRDS(results_table, file = "nowind_new_no2.rds")
+results_table
+```
+
+```{r echo=FALSE, warning=FALSE}
+results_table %>%
+  mutate(distance_ordinal = c(1:10)) %>%
+  ggplot() + 
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_ribbon(aes(x     = distance_ordinal, 
+                  y     = point_est, 
+                  ymin  = ci_lower, 
+                  ymax  = ci_upper),
+              fill = "black", 
+              alpha = 0.2) +
+  geom_pointrange(aes(x     = distance_ordinal, 
+                      y     = point_est, 
+                      ymin  = ci_lower, 
+                      ymax  = ci_upper),
+                  color = "black") + 
+  labs(y = "") +
+  scale_x_discrete(name = "", 
+                   limits = c("0-1", "1-2", "2-3", "3-4", "4-5",
+                              "5-6", "6-7", "7-8", "8-9", "9-10")) +
+  theme_classic()
+```
+
+
+## Pollutant: O3
+
+**Notes:**
+
+- We used data from `r aqs_monthly_annuli_nowind_new %>% filter(monthly_mean_ozone > 0) %>% distinct(site_id) %>% nrow()` monitors and `r aqs_monthly_annuli_nowind_new %>% filter(monthly_mean_ozone > 0) %>% distinct(site_id_month_year) %>% nrow()` monitor-months, from `r min(aqs_monthly_annuli_nowind_new$month_year)` to `r max(aqs_monthly_annuli_nowind_new$month_year)`
+- We droppped the `r aqs_monthly_annuli_nowind_new %>% filter(monthly_mean_ozone <= 0) %>% nrow()` monitor-months that had nonsensical mean monthly O3 concentrations of ≤ 0 µg/m^3, 
+
+#### Crude model
+
+```{r echo=FALSE}
+model_fit <- felm(monthly_mean_ozone ~ 
+                    wells_preprod_0to1km +
+                    wells_preprod_1to2km +
+                    wells_preprod_2to3km +
+                    wells_preprod_3to4km +
+                    wells_preprod_4to5km +
+                    wells_preprod_5to6km +
+                    wells_preprod_6to7km +
+                    wells_preprod_7to8km +
+                    wells_preprod_8to9km +
+                    wells_preprod_9to10km,
+                  data = subset(aqs_monthly_annuli_nowind_new, 
+                                monthly_mean_ozone > 0))
+summary(model_fit)
+```
+
+
+#### FE for monitor + air basin-month + year
+
+```{r echo=FALSE, include=FALSE}
+model_fit <- felm(monthly_mean_ozone ~
+                    wells_preprod_0to1km +
+                    wells_preprod_1to2km +
+                    wells_preprod_2to3km +
+                    wells_preprod_3to4km +
+                    wells_preprod_4to5km +
+                    wells_preprod_5to6km +
+                    wells_preprod_6to7km +
+                    wells_preprod_7to8km +
+                    wells_preprod_8to9km +
+                    wells_preprod_9to10km +
+                    monthly_precip_total +
+                    monthly_temp_mean
+                  | factor(site_id) +
+                    factor(carb_basin):factor(month(month_year)) +
+                    factor(year(month_year)),
+                  data = subset(drop_na(aqs_monthly_annuli_nowind_new,
+                                        monthly_mean_ozone), 
+                                monthly_mean_ozone > 0))
+summary(model_fit)
+```
+
+```{r echo=FALSE}
+results_table <- 
+  tibble(
+    distance = c("0-1", "1-2", "2-3", "3-4", "4-5",
+                 "5-6", "6-7", "7-8", "8-9", "9-10"),
+    point_est   = coef(model_fit)[1:10],
+    ci_lower = confint(model_fit)[1:10],
+    ci_upper = confint(model_fit)[13:22]
+  )
+saveRDS(results_table, file = "nowind_new_o3.rds")
+results_table
+```
+
+```{r echo=FALSE, warning=FALSE}
+results_table %>%
+  mutate(distance_ordinal = c(1:10)) %>%
+  ggplot() + 
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_ribbon(aes(x     = distance_ordinal, 
+                  y     = point_est, 
+                  ymin  = ci_lower, 
+                  ymax  = ci_upper),
+              fill = "black", 
+              alpha = 0.2) +
+  geom_pointrange(aes(x     = distance_ordinal, 
+                      y     = point_est, 
+                      ymin  = ci_lower, 
+                      ymax  = ci_upper),
+                  color = "black") + 
+  labs(y = "") +
+  scale_x_discrete(name = "", 
+                   limits = c("0-1", "1-2", "2-3", "3-4", "4-5",
+                              "5-6", "6-7", "7-8", "8-9", "9-10")) +
+  theme_classic()
+```
+
+
+## Pollutant: PM2.5
+
+**Notes:**
+
+- We used data from `r aqs_monthly_annuli_nowind_new %>% filter(monthly_mean_pm2.5 > 0) %>% distinct(site_id) %>% nrow()` monitors and `r aqs_monthly_annuli_nowind_new %>% filter(monthly_mean_pm2.5 > 0) %>% distinct(site_id_month_year) %>% nrow()` monitor-months, from `r min(aqs_monthly_annuli_nowind_new$month_year)` to `r max(aqs_monthly_annuli_nowind_new$month_year)`
+- We droppped the `r aqs_monthly_annuli_nowind_new %>% filter(monthly_mean_pm2.5 <= 0) %>% nrow()` monitor-months that had nonsensical mean monthly PM2.5 concentrations of ≤ 0 µg/m^3, 
+
+#### Crude model
+
+```{r echo=FALSE}
+model_fit <- felm(monthly_mean_pm2.5 ~ 
+                    wells_preprod_0to1km +
+                    wells_preprod_1to2km +
+                    wells_preprod_2to3km +
+                    wells_preprod_3to4km +
+                    wells_preprod_4to5km +
+                    wells_preprod_5to6km +
+                    wells_preprod_6to7km +
+                    wells_preprod_7to8km +
+                    wells_preprod_8to9km +
+                    wells_preprod_9to10km,
+                  data = subset(aqs_monthly_annuli_nowind_new, 
+                                monthly_mean_pm2.5 > 0))
+summary(model_fit)
+```
+
+#### Adjusted model with basin-month + year + monitor FE
+
+```{r echo=FALSE, include=FALSE}
+model_fit <- felm(monthly_mean_pm2.5 ~
+                    wells_preprod_0to1km +
+                    wells_preprod_1to2km +
+                    wells_preprod_2to3km +
+                    wells_preprod_3to4km +
+                    wells_preprod_4to5km +
+                    wells_preprod_5to6km +
+                    wells_preprod_6to7km +
+                    wells_preprod_7to8km +
+                    wells_preprod_8to9km +
+                    wells_preprod_9to10km +
+                    monthly_precip_total +
+                    monthly_temp_mean
+                  | factor(site_id) +
+                    factor(carb_basin):factor(month(month_year)) +
+                    factor(year(month_year)),
+                  data = subset(drop_na(aqs_monthly_annuli_nowind_new,
+                                        monthly_mean_pm2.5), 
+                                monthly_mean_pm2.5 > 0))
+summary(model_fit)
+```
+
+```{r echo=FALSE}
+results_table <- 
+  tibble(
+    distance = c("0-1", "1-2", "2-3", "3-4", "4-5",
+                 "5-6", "6-7", "7-8", "8-9", "9-10"),
+    point_est   = coef(model_fit)[1:10],
+    ci_lower = confint(model_fit)[1:10],
+    ci_upper = confint(model_fit)[13:22]
+  )
+saveRDS(results_table, file = "nowind_new_pm25.rds")
+results_table
+```
+
+```{r echo=FALSE, warning=FALSE}
+results_table %>%
+  mutate(distance_ordinal = c(1:10)) %>%
+  ggplot() + 
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_ribbon(aes(x     = distance_ordinal, 
+                  y     = point_est, 
+                  ymin  = ci_lower, 
+                  ymax  = ci_upper),
+              fill = "black", 
+              alpha = 0.2) +
+  geom_pointrange(aes(x     = distance_ordinal, 
+                      y     = point_est, 
+                      ymin  = ci_lower, 
+                      ymax  = ci_upper),
+                  color = "black") + 
+  labs(y = "") +
+  scale_x_discrete(name = "", 
+                   limits = c("0-1", "1-2", "2-3", "3-4", "4-5",
+                              "5-6", "6-7", "7-8", "8-9", "9-10")) +
+  theme_classic()
+```
+
+
+## Pollutant: SO2
+
+**Notes:**
+
+- We used data from `r aqs_monthly_annuli_nowind_new %>% filter(monthly_mean_so2 > 0) %>% distinct(site_id) %>% nrow()` monitors and `r aqs_monthly_annuli_nowind_new %>% filter(monthly_mean_so2 > 0) %>% distinct(site_id_month_year) %>% nrow()` monitor-months, from `r min(aqs_monthly_annuli_nowind_new$month_year)` to `r max(aqs_monthly_annuli_nowind_new$month_year)`
+- We droppped the `r aqs_monthly_annuli_nowind_new %>% filter(monthly_mean_so2 <= 0) %>% nrow()` monitor-months that had nonsensical mean monthly SO2 concentrations of ≤ 0 µg/m^3, 
+
+#### Crude model
+
+```{r echo=FALSE}
+model_fit <- felm(monthly_mean_so2 ~ 
+                    wells_preprod_0to1km +
+                    wells_preprod_1to2km +
+                    wells_preprod_2to3km +
+                    wells_preprod_3to4km +
+                    wells_preprod_4to5km +
+                    wells_preprod_5to6km +
+                    wells_preprod_6to7km +
+                    wells_preprod_7to8km +
+                    wells_preprod_8to9km +
+                    wells_preprod_9to10km,
+                  data = subset(aqs_monthly_annuli_nowind_new, 
+                                monthly_mean_so2 > 0))
+summary(model_fit)
+```
+
+
+#### Adjusted model with basin-month + year + monitor FE
+
+```{r echo=FALSE, include=FALSE}
+model_fit <- felm(monthly_mean_so2 ~
+                    wells_preprod_0to1km +
+                    wells_preprod_1to2km +
+                    wells_preprod_2to3km +
+                    wells_preprod_3to4km +
+                    wells_preprod_4to5km +
+                    wells_preprod_5to6km +
+                    wells_preprod_6to7km +
+                    wells_preprod_7to8km +
+                    wells_preprod_8to9km +
+                    wells_preprod_9to10km +
+                    monthly_precip_total +
+                    monthly_temp_mean
+                  | factor(site_id) +
+                    factor(carb_basin):factor(month(month_year)) +
+                    factor(year(month_year)),
+                  data = subset(drop_na(aqs_monthly_annuli_nowind_new,
+                                        monthly_mean_so2), 
+                                monthly_mean_so2 > 0))
+summary(model_fit)
+```
+
+```{r echo=FALSE}
+results_table <- 
+  tibble(
+    distance  = c("0-1", "1-2", "2-3", "3-4", "4-5",
+                  "5-6", "6-7", "7-8", "8-9", "9-10"),
+    point_est = coef(model_fit)[1:10],
+    ci_lower  = confint(model_fit)[1:10],
+    ci_upper  = confint(model_fit)[13:22]
+  )
+saveRDS(results_table, file = "nowind_new_so2.rds")
+results_table
+```
+
+
+```{r echo=FALSE, warning=FALSE}
+results_table %>%
+  mutate(distance_ordinal = c(1:10)) %>%
+  ggplot() + 
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_ribbon(aes(x     = distance_ordinal, 
+                  y     = point_est, 
+                  ymin  = ci_lower, 
+                  ymax  = ci_upper),
+              fill = "black", 
+              alpha = 0.2) +
+  geom_pointrange(aes(x     = distance_ordinal, 
+                      y     = point_est, 
+                      ymin  = ci_lower, 
+                      ymax  = ci_upper),
+                  color = "black") + 
+  labs(y = "") +
+  scale_x_discrete(name = "", 
+                   limits = c("0-1", "1-2", "2-3", "3-4", "4-5",
+                              "5-6", "6-7", "7-8", "8-9", "9-10")) +
+  theme_classic()
+```

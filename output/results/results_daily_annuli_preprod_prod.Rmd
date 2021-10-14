@@ -1,0 +1,572 @@
+---
+title: "Results - Daily Annuli - Preproduction and production (in the same model)"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+source("../../code/0-setup/1-setup.R")
+library("lfe")
+```
+
+```{r input_data, include=FALSE}
+aqs_daily_annuli_exposure <- 
+  readRDS("../../data/processed/aqs_daily_annuli_exposure.rds") #%>%
+  # # makes units for analysis increments of 1,000 BOE
+  # mutate(prod_volume_upwind_0to1km    = (prod_volume_upwind_0to1km / 1000),
+  #        prod_volume_upwind_1to2km    = (prod_volume_upwind_1to2km / 1000),
+  #        prod_volume_upwind_2to3km    = (prod_volume_upwind_2to3km / 1000),
+  #        prod_volume_upwind_3to4km    = (prod_volume_upwind_3to4km / 1000),
+  #        prod_volume_upwind_4to5km    = (prod_volume_upwind_4to5km / 1000),
+  #        prod_volume_upwind_5to6km    = (prod_volume_upwind_5to6km / 1000),
+  #        prod_volume_upwind_6to7km    = (prod_volume_upwind_6to7km / 1000),
+  #        prod_volume_upwind_7to8km    = (prod_volume_upwind_8to9km / 1000),
+  #        prod_volume_upwind_8to9km    = (prod_volume_upwind_8to9km / 1000),
+  #        prod_volume_upwind_9to10km   = (prod_volume_upwind_9to10km / 1000),
+  #        prod_volume_downwind_0to1km  = (prod_volume_downwind_0to1km / 1000),
+  #        prod_volume_downwind_1to2km  = (prod_volume_downwind_1to2km / 1000),
+  #        prod_volume_downwind_2to3km  = (prod_volume_downwind_2to3km / 1000),
+  #        prod_volume_downwind_3to4km  = (prod_volume_downwind_3to4km / 1000),
+  #        prod_volume_downwind_4to5km  = (prod_volume_downwind_4to5km / 1000),
+  #        prod_volume_downwind_5to6km  = (prod_volume_downwind_5to6km / 1000),
+  #        prod_volume_downwind_6to7km  = (prod_volume_downwind_6to7km / 1000),
+  #        prod_volume_downwind_7to8km  = (prod_volume_downwind_8to9km / 1000),
+  #        prod_volume_downwind_8to9km  = (prod_volume_downwind_8to9km / 1000),
+  #        prod_volume_downwind_9to10km = (prod_volume_downwind_9to10km / 1000),
+  #        prod_volume_nowind_0to1km    = (prod_volume_nowind_0to1km / 1000),
+  #        prod_volume_nowind_1to2km    = (prod_volume_nowind_1to2km / 1000),
+  #        prod_volume_nowind_2to3km    = (prod_volume_nowind_2to3km / 1000),
+  #        prod_volume_nowind_3to4km    = (prod_volume_nowind_3to4km / 1000),
+  #        prod_volume_nowind_4to5km    = (prod_volume_nowind_4to5km / 1000),
+  #        prod_volume_nowind_5to6km    = (prod_volume_nowind_5to6km / 1000),
+  #        prod_volume_nowind_6to7km    = (prod_volume_nowind_6to7km / 1000),
+  #        prod_volume_nowind_7to8km    = (prod_volume_nowind_8to9km / 1000),
+  #        prod_volume_nowind_8to9km    = (prod_volume_nowind_8to9km / 1000),
+  #        prod_volume_nowind_9to10km   = (prod_volume_nowind_9to10km / 1000))
+```
+
+
+### PM2.5
+
+```{r echo=FALSE}
+data_in <- aqs_daily_annuli_exposure %>%
+  filter(pm25_mean >= 0) %>%
+  filter(year %in% c(2006:2019))
+model_fit <- felm(pm25_mean ~ 
+                    preprod_count_uw_0to1km +
+                    preprod_count_uw_1to2km +
+                    preprod_count_uw_2to3km +
+                    preprod_count_uw_3to4km +
+                    preprod_count_uw_4to5km +
+                    preprod_count_uw_5to6km +
+                    preprod_count_uw_6to7km +
+                    preprod_count_uw_7to8km +
+                    preprod_count_uw_8to9km +
+                    preprod_count_uw_9to10km +
+                    prod_volume_upwind_0to1km +
+                    prod_volume_upwind_1to2km +
+                    prod_volume_upwind_2to3km +
+                    prod_volume_upwind_3to4km +
+                    prod_volume_upwind_4to5km +
+                    prod_volume_upwind_5to6km +
+                    prod_volume_upwind_6to7km +
+                    prod_volume_upwind_7to8km +
+                    prod_volume_upwind_8to9km +
+                    prod_volume_upwind_9to10km +
+                    preprod_count_dw_0to1km +
+                    preprod_count_dw_1to2km +
+                    preprod_count_dw_2to3km +
+                    preprod_count_dw_3to4km +
+                    preprod_count_dw_4to5km +
+                    preprod_count_dw_5to6km +
+                    preprod_count_dw_6to7km +
+                    preprod_count_dw_7to8km +
+                    preprod_count_dw_8to9km +
+                    preprod_count_dw_9to10km +
+                    prod_volume_downwind_0to1km +
+                    prod_volume_downwind_1to2km +
+                    prod_volume_downwind_2to3km +
+                    prod_volume_downwind_3to4km +
+                    prod_volume_downwind_4to5km +
+                    prod_volume_downwind_5to6km +
+                    prod_volume_downwind_6to7km +
+                    prod_volume_downwind_7to8km +
+                    prod_volume_downwind_8to9km +
+                    prod_volume_downwind_9to10km +
+                    preprod_count_lateral_0to1km +
+                    preprod_count_lateral_1to2km +
+                    preprod_count_lateral_2to3km +
+                    preprod_count_lateral_3to4km +
+                    preprod_count_lateral_4to5km +
+                    preprod_count_lateral_5to6km +
+                    preprod_count_lateral_6to7km +
+                    preprod_count_lateral_7to8km +
+                    preprod_count_lateral_8to9km +
+                    preprod_count_lateral_9to10km +
+                    prod_volume_lateral_0to1km +
+                    prod_volume_lateral_1to2km +
+                    prod_volume_lateral_2to3km +
+                    prod_volume_lateral_3to4km +
+                    prod_volume_lateral_4to5km +
+                    prod_volume_lateral_5to6km +
+                    prod_volume_lateral_6to7km +
+                    prod_volume_lateral_7to8km +
+                    prod_volume_lateral_8to9km +
+                    prod_volume_lateral_9to10km +
+                    n_plume +
+                    narr_precip + 
+                    narr_temp +
+                    narr_wind_speed
+                  | factor(day_of_week) +
+                    factor(monitor_id):factor(month) +
+                    factor(carb_basin):factor(year) +
+                    monitor_id,
+                  data = data_in)
+```
+
+```{r echo=FALSE}
+model_output <-
+  tibble(
+    distance  = c("0-1", "1-2", "2-3", "3-4", "4-5",
+                  "0-1", "1-2", "2-3", "3-4", "4-5"),
+    stage     = c("preprod", "preprod", "preprod", "preprod", "preprod",
+                  "prod", "prod", "prod", "prod", "prod"),
+    point_est = coef(model_fit)[c(1:5, 11:15)],
+    ci_lower  = confint(model_fit)[c(1:5, 11:15)],
+    ci_upper  = confint(model_fit)[c(65:69, 75:79)])
+write_csv(model_output, "point_estimates/daily_annuli_preprod_prod_upwind_pm25.csv")
+model_output
+```
+
+```{r echo=FALSE, warning = FALSE}
+model_output %>%
+  ggplot() + 
+  geom_pointrange(aes(x = distance, y = point_est, 
+                      ymin = ci_lower, ymax = ci_upper),
+                  alpha = 0.5) + 
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  labs(x = "Distance to well (km)", 
+       y = "Marginal change in daily PM2.5") +
+  theme_classic() +
+  facet_wrap(. ~ stage)
+```
+
+### CO
+
+```{r echo=FALSE}
+data_in <- aqs_daily_annuli_exposure %>%
+  filter(co_max >= 0) %>%
+  filter(year %in% c(2006:2019))
+model_fit <- felm(co_max ~ 
+                    preprod_count_uw_0to1km +
+                    preprod_count_uw_1to2km +
+                    preprod_count_uw_2to3km +
+                    preprod_count_uw_3to4km +
+                    preprod_count_uw_4to5km +
+                    preprod_count_uw_5to6km +
+                    preprod_count_uw_6to7km +
+                    preprod_count_uw_7to8km +
+                    preprod_count_uw_8to9km +
+                    preprod_count_uw_9to10km +
+                    prod_volume_upwind_0to1km +
+                    prod_volume_upwind_1to2km +
+                    prod_volume_upwind_2to3km +
+                    prod_volume_upwind_3to4km +
+                    prod_volume_upwind_4to5km +
+                    prod_volume_upwind_5to6km +
+                    prod_volume_upwind_6to7km +
+                    prod_volume_upwind_7to8km +
+                    prod_volume_upwind_8to9km +
+                    prod_volume_upwind_9to10km +
+                    preprod_count_dw_0to1km +
+                    preprod_count_dw_1to2km +
+                    preprod_count_dw_2to3km +
+                    preprod_count_dw_3to4km +
+                    preprod_count_dw_4to5km +
+                    preprod_count_dw_5to6km +
+                    preprod_count_dw_6to7km +
+                    preprod_count_dw_7to8km +
+                    preprod_count_dw_8to9km +
+                    preprod_count_dw_9to10km +
+                    prod_volume_downwind_0to1km +
+                    prod_volume_downwind_1to2km +
+                    prod_volume_downwind_2to3km +
+                    prod_volume_downwind_3to4km +
+                    prod_volume_downwind_4to5km +
+                    prod_volume_downwind_5to6km +
+                    prod_volume_downwind_6to7km +
+                    prod_volume_downwind_7to8km +
+                    prod_volume_downwind_8to9km +
+                    prod_volume_downwind_9to10km +
+                    preprod_count_lateral_0to1km +
+                    preprod_count_lateral_1to2km +
+                    preprod_count_lateral_2to3km +
+                    preprod_count_lateral_3to4km +
+                    preprod_count_lateral_4to5km +
+                    preprod_count_lateral_5to6km +
+                    preprod_count_lateral_6to7km +
+                    preprod_count_lateral_7to8km +
+                    preprod_count_lateral_8to9km +
+                    preprod_count_lateral_9to10km +
+                    prod_volume_lateral_0to1km +
+                    prod_volume_lateral_1to2km +
+                    prod_volume_lateral_2to3km +
+                    prod_volume_lateral_3to4km +
+                    prod_volume_lateral_4to5km +
+                    prod_volume_lateral_5to6km +
+                    prod_volume_lateral_6to7km +
+                    prod_volume_lateral_7to8km +
+                    prod_volume_lateral_8to9km +
+                    prod_volume_lateral_9to10km +
+                    n_plume +
+                    narr_precip + 
+                    narr_temp +
+                    narr_wind_speed
+                  | factor(day_of_week) +
+                    factor(monitor_id):factor(month) +
+                    factor(carb_basin):factor(year) +
+                    monitor_id,
+                  data = data_in)
+```
+
+```{r echo=FALSE}
+model_output <-
+  tibble(
+    distance  = c("0-1", "1-2", "2-3", "3-4", "4-5",
+                  "0-1", "1-2", "2-3", "3-4", "4-5"),
+    stage     = c("preprod", "preprod", "preprod", "preprod", "preprod",
+                  "prod", "prod", "prod", "prod", "prod"),
+    point_est = coef(model_fit)[c(1:5, 11:15)],
+    ci_lower  = confint(model_fit)[c(1:5, 11:15)],
+    ci_upper  = confint(model_fit)[c(65:69, 75:79)])
+write_csv(model_output, "point_estimates/daily_annuli_preprod_prod_upwind_co.csv")
+model_output
+```
+
+```{r echo=FALSE, warning = FALSE}
+model_output %>%
+  ggplot() + 
+  geom_pointrange(aes(x = distance, y = point_est, 
+                      ymin = ci_lower, ymax = ci_upper),
+                  alpha = 0.5) + 
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  labs(x = "Distance to well (km)", 
+       y = "Marginal change in daily CO") +
+  theme_classic() +
+  facet_wrap(. ~ stage)
+```
+
+### NO2
+
+```{r echo=FALSE}
+data_in <- aqs_daily_annuli_exposure %>%
+  filter(no2_max >= 0) %>%
+  filter(year %in% c(2006:2019))
+model_fit <- felm(no2_max ~ 
+                    preprod_count_uw_0to1km +
+                    preprod_count_uw_1to2km +
+                    preprod_count_uw_2to3km +
+                    preprod_count_uw_3to4km +
+                    preprod_count_uw_4to5km +
+                    preprod_count_uw_5to6km +
+                    preprod_count_uw_6to7km +
+                    preprod_count_uw_7to8km +
+                    preprod_count_uw_8to9km +
+                    preprod_count_uw_9to10km +
+                    prod_volume_upwind_0to1km +
+                    prod_volume_upwind_1to2km +
+                    prod_volume_upwind_2to3km +
+                    prod_volume_upwind_3to4km +
+                    prod_volume_upwind_4to5km +
+                    prod_volume_upwind_5to6km +
+                    prod_volume_upwind_6to7km +
+                    prod_volume_upwind_7to8km +
+                    prod_volume_upwind_8to9km +
+                    prod_volume_upwind_9to10km +
+                    preprod_count_dw_0to1km +
+                    preprod_count_dw_1to2km +
+                    preprod_count_dw_2to3km +
+                    preprod_count_dw_3to4km +
+                    preprod_count_dw_4to5km +
+                    preprod_count_dw_5to6km +
+                    preprod_count_dw_6to7km +
+                    preprod_count_dw_7to8km +
+                    preprod_count_dw_8to9km +
+                    preprod_count_dw_9to10km +
+                    prod_volume_downwind_0to1km +
+                    prod_volume_downwind_1to2km +
+                    prod_volume_downwind_2to3km +
+                    prod_volume_downwind_3to4km +
+                    prod_volume_downwind_4to5km +
+                    prod_volume_downwind_5to6km +
+                    prod_volume_downwind_6to7km +
+                    prod_volume_downwind_7to8km +
+                    prod_volume_downwind_8to9km +
+                    prod_volume_downwind_9to10km +
+                    preprod_count_lateral_0to1km +
+                    preprod_count_lateral_1to2km +
+                    preprod_count_lateral_2to3km +
+                    preprod_count_lateral_3to4km +
+                    preprod_count_lateral_4to5km +
+                    preprod_count_lateral_5to6km +
+                    preprod_count_lateral_6to7km +
+                    preprod_count_lateral_7to8km +
+                    preprod_count_lateral_8to9km +
+                    preprod_count_lateral_9to10km +
+                    prod_volume_lateral_0to1km +
+                    prod_volume_lateral_1to2km +
+                    prod_volume_lateral_2to3km +
+                    prod_volume_lateral_3to4km +
+                    prod_volume_lateral_4to5km +
+                    prod_volume_lateral_5to6km +
+                    prod_volume_lateral_6to7km +
+                    prod_volume_lateral_7to8km +
+                    prod_volume_lateral_8to9km +
+                    prod_volume_lateral_9to10km +
+                    n_plume +
+                    narr_precip + 
+                    narr_temp +
+                    narr_wind_speed
+                  | factor(day_of_week) +
+                    factor(monitor_id):factor(month) +
+                    factor(carb_basin):factor(year) +
+                    monitor_id,
+                  data = data_in)
+```
+
+```{r echo=FALSE}
+model_output <-
+  tibble(
+    distance  = c("0-1", "1-2", "2-3", "3-4", "4-5",
+                  "0-1", "1-2", "2-3", "3-4", "4-5"),
+    stage     = c("preprod", "preprod", "preprod", "preprod", "preprod",
+                  "prod", "prod", "prod", "prod", "prod"),
+    point_est = coef(model_fit)[c(1:5, 11:15)],
+    ci_lower  = confint(model_fit)[c(1:5, 11:15)],
+    ci_upper  = confint(model_fit)[c(65:69, 75:79)])
+write_csv(model_output, "point_estimates/daily_annuli_preprod_prod_upwind_no2.csv")
+model_output
+```
+
+```{r echo=FALSE, warning = FALSE}
+model_output %>%
+  ggplot() + 
+  geom_pointrange(aes(x = distance, y = point_est, 
+                      ymin = ci_lower, ymax = ci_upper),
+                  alpha = 0.5) + 
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  labs(x = "Distance to well (km)", 
+       y = "Marginal change in daily NO2") +
+  theme_classic() +
+  facet_wrap(. ~ stage)
+```
+
+### O3
+
+```{r echo=FALSE}
+data_in <- aqs_daily_annuli_exposure %>%
+  filter(o3_max >= 0) %>%
+  filter(year %in% c(2006:2019))
+model_fit <- felm(o3_max ~ 
+                    preprod_count_uw_0to1km +
+                    preprod_count_uw_1to2km +
+                    preprod_count_uw_2to3km +
+                    preprod_count_uw_3to4km +
+                    preprod_count_uw_4to5km +
+                    preprod_count_uw_5to6km +
+                    preprod_count_uw_6to7km +
+                    preprod_count_uw_7to8km +
+                    preprod_count_uw_8to9km +
+                    preprod_count_uw_9to10km +
+                    prod_volume_upwind_0to1km +
+                    prod_volume_upwind_1to2km +
+                    prod_volume_upwind_2to3km +
+                    prod_volume_upwind_3to4km +
+                    prod_volume_upwind_4to5km +
+                    prod_volume_upwind_5to6km +
+                    prod_volume_upwind_6to7km +
+                    prod_volume_upwind_7to8km +
+                    prod_volume_upwind_8to9km +
+                    prod_volume_upwind_9to10km +
+                    preprod_count_dw_0to1km +
+                    preprod_count_dw_1to2km +
+                    preprod_count_dw_2to3km +
+                    preprod_count_dw_3to4km +
+                    preprod_count_dw_4to5km +
+                    preprod_count_dw_5to6km +
+                    preprod_count_dw_6to7km +
+                    preprod_count_dw_7to8km +
+                    preprod_count_dw_8to9km +
+                    preprod_count_dw_9to10km +
+                    prod_volume_downwind_0to1km +
+                    prod_volume_downwind_1to2km +
+                    prod_volume_downwind_2to3km +
+                    prod_volume_downwind_3to4km +
+                    prod_volume_downwind_4to5km +
+                    prod_volume_downwind_5to6km +
+                    prod_volume_downwind_6to7km +
+                    prod_volume_downwind_7to8km +
+                    prod_volume_downwind_8to9km +
+                    prod_volume_downwind_9to10km +
+                    preprod_count_lateral_0to1km +
+                    preprod_count_lateral_1to2km +
+                    preprod_count_lateral_2to3km +
+                    preprod_count_lateral_3to4km +
+                    preprod_count_lateral_4to5km +
+                    preprod_count_lateral_5to6km +
+                    preprod_count_lateral_6to7km +
+                    preprod_count_lateral_7to8km +
+                    preprod_count_lateral_8to9km +
+                    preprod_count_lateral_9to10km +
+                    prod_volume_lateral_0to1km +
+                    prod_volume_lateral_1to2km +
+                    prod_volume_lateral_2to3km +
+                    prod_volume_lateral_3to4km +
+                    prod_volume_lateral_4to5km +
+                    prod_volume_lateral_5to6km +
+                    prod_volume_lateral_6to7km +
+                    prod_volume_lateral_7to8km +
+                    prod_volume_lateral_8to9km +
+                    prod_volume_lateral_9to10km +
+                    n_plume +
+                    narr_precip + 
+                    narr_temp +
+                    narr_wind_speed
+                  | factor(day_of_week) +
+                    factor(monitor_id):factor(month) +
+                    factor(carb_basin):factor(year) +
+                    monitor_id,
+                  data = data_in)
+```
+
+```{r echo=FALSE}
+model_output <-
+  tibble(
+    distance  = c("0-1", "1-2", "2-3", "3-4", "4-5",
+                  "0-1", "1-2", "2-3", "3-4", "4-5"),
+    stage     = c("preprod", "preprod", "preprod", "preprod", "preprod",
+                  "prod", "prod", "prod", "prod", "prod"),
+    point_est = coef(model_fit)[c(1:5, 11:15)],
+    ci_lower  = confint(model_fit)[c(1:5, 11:15)],
+    ci_upper  = confint(model_fit)[c(65:69, 75:79)])
+write_csv(model_output, "point_estimates/daily_annuli_preprod_prod_upwind_o3.csv")
+model_output
+```
+
+```{r echo=FALSE, warning = FALSE}
+model_output %>%
+  ggplot() + 
+  geom_pointrange(aes(x = distance, y = point_est, 
+                      ymin = ci_lower, ymax = ci_upper),
+                  alpha = 0.5) + 
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  labs(x = "Distance to well (km)", 
+       y = "Marginal change in daily O3") +
+  theme_classic() +
+  facet_wrap(. ~ stage)
+```
+
+### VOCs
+
+
+```{r echo=FALSE}
+data_in <- aqs_daily_annuli_exposure %>%
+  filter(vocs_total >= 0) #%>%
+  #filter(year %in% c(2006:2019))
+model_fit <- felm(vocs_total ~ 
+                    preprod_count_uw_0to1km +
+                    preprod_count_uw_1to2km +
+                    preprod_count_uw_2to3km +
+                    preprod_count_uw_3to4km +
+                    preprod_count_uw_4to5km +
+                    preprod_count_uw_5to6km +
+                    preprod_count_uw_6to7km +
+                    preprod_count_uw_7to8km +
+                    preprod_count_uw_8to9km +
+                    preprod_count_uw_9to10km +
+                    prod_volume_upwind_0to1km +
+                    prod_volume_upwind_1to2km +
+                    prod_volume_upwind_2to3km +
+                    prod_volume_upwind_3to4km +
+                    prod_volume_upwind_4to5km +
+                    prod_volume_upwind_5to6km +
+                    prod_volume_upwind_6to7km +
+                    prod_volume_upwind_7to8km +
+                    prod_volume_upwind_8to9km +
+                    prod_volume_upwind_9to10km +
+                    preprod_count_dw_0to1km +
+                    preprod_count_dw_1to2km +
+                    preprod_count_dw_2to3km +
+                    preprod_count_dw_3to4km +
+                    preprod_count_dw_4to5km +
+                    preprod_count_dw_5to6km +
+                    preprod_count_dw_6to7km +
+                    preprod_count_dw_7to8km +
+                    preprod_count_dw_8to9km +
+                    preprod_count_dw_9to10km +
+                    prod_volume_downwind_0to1km +
+                    prod_volume_downwind_1to2km +
+                    prod_volume_downwind_2to3km +
+                    prod_volume_downwind_3to4km +
+                    prod_volume_downwind_4to5km +
+                    prod_volume_downwind_5to6km +
+                    prod_volume_downwind_6to7km +
+                    prod_volume_downwind_7to8km +
+                    prod_volume_downwind_8to9km +
+                    prod_volume_downwind_9to10km +
+                    preprod_count_lateral_0to1km +
+                    preprod_count_lateral_1to2km +
+                    preprod_count_lateral_2to3km +
+                    preprod_count_lateral_3to4km +
+                    preprod_count_lateral_4to5km +
+                    preprod_count_lateral_5to6km +
+                    preprod_count_lateral_6to7km +
+                    preprod_count_lateral_7to8km +
+                    preprod_count_lateral_8to9km +
+                    preprod_count_lateral_9to10km +
+                    prod_volume_lateral_0to1km +
+                    prod_volume_lateral_1to2km +
+                    prod_volume_lateral_2to3km +
+                    prod_volume_lateral_3to4km +
+                    prod_volume_lateral_4to5km +
+                    prod_volume_lateral_5to6km +
+                    prod_volume_lateral_6to7km +
+                    prod_volume_lateral_7to8km +
+                    prod_volume_lateral_8to9km +
+                    prod_volume_lateral_9to10km +
+                    n_plume +
+                    narr_precip + 
+                    narr_temp +
+                    narr_wind_speed
+                  | factor(day_of_week) +
+                    factor(monitor_id):factor(month) +
+                    factor(carb_basin):factor(year) +
+                    monitor_id,
+                  data = data_in)
+```
+
+```{r echo=FALSE}
+model_output <-
+  tibble(
+    distance  = c("0-1", "1-2", "2-3", "3-4", "4-5",
+                  "0-1", "1-2", "2-3", "3-4", "4-5"),
+    stage     = c("preprod", "preprod", "preprod", "preprod", "preprod",
+                  "prod", "prod", "prod", "prod", "prod"),
+    point_est = coef(model_fit)[c(1:5, 11:15)],
+    ci_lower  = confint(model_fit)[c(1:5, 11:15)],
+    ci_upper  = confint(model_fit)[c(65:69, 75:79)])
+write_csv(model_output, "point_estimates/daily_annuli_preprod_prod_upwind_vocs.csv")
+model_output
+```
+
+```{r echo=FALSE, warning = FALSE}
+model_output %>%
+  ggplot() + 
+  geom_pointrange(aes(x = distance, y = point_est, 
+                      ymin = ci_lower, ymax = ci_upper),
+                  alpha = 0.5) + 
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  labs(x = "Distance to well (km)", 
+       y = "Marginal change in daily VOCs") +
+  theme_classic() +
+  facet_wrap(. ~ stage)
+```

@@ -1,0 +1,110 @@
+---
+title: "Ch. 2 - Results - Correlation between preproduction well count and production volume"
+output: html_notebook
+date: "2/26/2021"
+---
+
+```{r setup, include=FALSE}
+source("../../code/0-setup/1-setup.R")
+library("corrplot")
+```
+
+```{r input_data, include=FALSE}
+aqs_daily_annuli_exposure <- 
+  readRDS("../../data/processed/aqs_daily_annuli_exposure.rds")
+```
+
+We used Spearman's correlation coefficient for non-parametric (i.e., ranked) data; Pearson's coefficient for 
+
+"Spearman’s rho statistic is also used to estimate a rank-based measure of association. This test may be used if the data do not come from a bivariate normal distribution." [source](http://www.sthda.com/english/wiki/correlation-test-between-two-variables-in-r#spearman-rank-correlation-coefficient)
+
+#### 0-1 km
+
+```{r echo=FALSE}
+ggplot(aqs_daily_annuli_exposure,
+       aes(preprod_count_uw_0to1km, prod_volume_upwind_0to1km)) +
+  geom_point(alpha = 0.01) +
+  geom_smooth(method = lm, color = "red") +
+  theme_classic()
+```
+
+```{r}
+rho <- cor.test(aqs_daily_annuli_exposure$preprod_count_uw_0to1km,
+                aqs_daily_annuli_exposure$prod_volume_upwind_0to1km, 
+                link = "spearman")
+rho
+```
+
+#### 1-2 km
+
+```{r echo=FALSE}
+ggplot(aqs_daily_annuli_exposure,
+       aes(preprod_count_uw_1to2km, prod_volume_upwind_1to2km)) +
+  geom_point(alpha = 0.01) +
+  geom_smooth(method = lm, color = "red") +
+  theme_classic()
+```
+
+```{r}
+rho <- cor.test(aqs_daily_annuli_exposure$preprod_count_uw_1to2km,
+                aqs_daily_annuli_exposure$prod_volume_upwind_1to2km, 
+                link = "spearman")
+rho
+```
+
+#### 2-3 km
+
+```{r echo=FALSE}
+ggplot(aqs_daily_annuli_exposure,
+       aes(preprod_count_uw_2to3km, prod_volume_upwind_2to3km)) +
+  geom_point(alpha = 0.01) +
+  geom_smooth(method = lm, color = "red") +
+  theme_classic()
+```
+
+```{r}
+rho <- cor.test(aqs_daily_annuli_exposure$preprod_count_uw_2to3km,
+                aqs_daily_annuli_exposure$prod_volume_upwind_2to3km, 
+                link = "spearman")
+rho
+```
+
+#### 3-4 km
+
+```{r echo=FALSE}
+ggplot(aqs_daily_annuli_exposure,
+       aes(preprod_count_uw_3to4km, prod_volume_upwind_3to4km)) +
+  geom_point(alpha = 0.01) +
+  geom_smooth(method = lm, color = "red") +
+  theme_classic()
+```
+
+```{r}
+rho <- cor.test(aqs_daily_annuli_exposure$prod_volume_upwind_3to4km,
+                aqs_daily_annuli_exposure$preprod_count_uw_3to4km, 
+                link = "spearman")
+rho
+```
+
+#### 4-5 km
+
+```{r echo=FALSE}
+ggplot(aqs_daily_annuli_exposure,
+       aes(preprod_count_uw_4to5km, prod_volume_upwind_4to5km)) +
+  geom_point(alpha = 0.01) +
+  geom_smooth(method = lm, color = "red") +
+  theme_classic()
+```
+
+
+```{r echo=FALSE}
+rho <- cor.test(aqs_daily_annuli_exposure$preprod_count_uw_9to10km,
+                aqs_daily_annuli_exposure$prod_volume_upwind_9to10km, 
+                link = "spearman")
+rho
+```
+
+
+## Summary
+
+We used Spearman's rho to assess the correlation between the count of preproduciton wells and the total production volume within each distance bin (0-1, 1-2, 2-3, 3-4, and 4-5 km).  There is a slight and statistically significant correlation between preproduction and production, with correlation coefficeints 

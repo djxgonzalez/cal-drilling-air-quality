@@ -1,0 +1,17 @@
+---
+title: "Memo: Well production Lost Hills"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+source("code/0-setup/1-setup.R")
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+

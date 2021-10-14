@@ -1,0 +1,18 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+Acquiring data from EPA using 'PWFSLSmoke' package
+
+```{r}
+
+# California state code == 6
+library(PWFSLSmoke)
+d <- epa_downloadData(year = 2000, 
+                      parameterCode = "WIND",
+                      downloadDir = "../../data/processed/",
+                      baseUrl = "https://aqs.epa.gov/aqsweb/airdata/")
+data_wind <- read_csv("")
+```
+

@@ -1,0 +1,84 @@
+---
+title: "Memo - Incorporating revised CalGEM all wells data"
+output: html_notebook
+date: "2/10/2021"
+---
+
+```{r setup, include=FALSE}
+source("../../code/0-setup/1-setup.R")
+source("../../code/1-data_tidying/2-tidy_calgem_wells_data.R")
+```
+
+```{r data_input, include=FALSE}
+wells_interim_old <- readRDS("../../data/deprecated/wells_interim.rds")
+wells_drillinginfo_2021 <- 
+  read_csv("../../data/raw/enverus/california_wells_feb2021.csv") %>%
+  bind_rows(read_csv("../../data/raw/enverus/california_wells_feb2021b.csv")) %>%
+  # renames variables of interest
+  mutate(api_number       =  str_sub(API14, 0, str_length(API14) - 4),
+         date_completed   = `Completion Date`,
+         prod_cumulative  = `Cum BOE`,  # barrels of oil equivalent
+         prod_start       = `First Prod Date`,
+         prod_end         = `Last Prod Date`) %>%
+  select(api_number:prod_end)
+wells_calgem_2021 <- 
+  read_csv("../../data/raw/cal_gem/well_sites/AllWells_20210210.csv")
+```
+
+
+## Objectives
+
+I made current `wells_interim` analytic dataset I've working with on this project (as well as other projects) with all wells dataset from CalGEM. However, I put together that dataset with an all wels dataset released in April 2020 (I think, maybe 2019). The most recently available Enverus (DrillingInfo) and CalGEM wells datasets, which I downloaded on 2/10/21, include a couple thousand preproduction wells that aren't currently in the `wells_interim` analytic dataset.
+
+In this memo, I first re-make the `wells_interim` dataset with updated data. Second, I compare the new analyic dataset with the old analytic dataset to determine which analyses (i.e., which years) I need to re-do.
+
+
+## Data tidying
+
+```{r data_tidying, echo=TRUE}
+source("../../code/1-data_tidying/2-tidy_calgem_wells_data.R")
+wells_interim <- tidyCalgemWellsData(wells_calgem_2021, wells_drillinginfo_2021)
+saveRDS(wells_interim, "../../data/interim/wells_interim.rds")
+```
+
+#### Table. Wells completed by year, new vs. old dataset
+
+```{r echo=FALSE}
+table1 <- wells_interim %>% 
+  filter(preprod_1999_to_2019 == 1) %>% 
+  filter(year(date_completed) %in% c(1999:2019)) %>% 
+  group_by(year(date_completed)) %>%
+  summarize(n_completed_new = n()) %>%
+  rename(year = `year(date_completed)`)
+table_1b <- wells_interim_old %>%
+  filter(preprod_1999_to_2019 == 1) %>% 
+  filter(year(date_completed) %in% c(1999:2019)) %>% 
+  group_by(year(date_completed)) %>%
+  summarize(n_completed_old = n()) %>%
+  rename(year = `year(date_completed)`)
+table1 <- table1 %>%
+  left_join(table_1b, by = "year") %>%
+  mutate(completed_difference = (n_completed_new - n_completed_old))
+table1
+```
+
+#### Table. Wells spudded by year, new vs. old dataset
+
+```{r echo=FALSE}
+table <- wells_interim %>% 
+  filter(preprod_1999_to_2019 == 1) %>% 
+  filter(year(date_spudded) %in% c(1999:2019)) %>% 
+  group_by(year(date_spudded)) %>%
+  summarize(n_spudded_new = n()) %>%
+  rename(year = `year(date_spudded)`)
+table_b <- wells_interim_old %>%
+  filter(preprod_1999_to_2019 == 1) %>% 
+  filter(year(date_spudded) %in% c(1999:2019)) %>% 
+  group_by(year(date_spudded)) %>%
+  summarize(n_spudded_old = n()) %>%
+  rename(year = `year(date_spudded)`)
+table <- table %>%
+  left_join(table_b, by = "year") %>%
+  mutate(spudded_difference = (n_spudded_new - n_spudded_old))
+table
+```
